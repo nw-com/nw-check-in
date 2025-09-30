@@ -182,7 +182,7 @@
           appId: "1:1060821780559:web:2638d630526d54f1a5023a",
           measurementId: "G-61Q1QNNRD2"
         };
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtycJgfz8UsXWlji63DkXpA4kmyY";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
         // --- 🚨 設定結束 🚨 ---
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -508,15 +508,17 @@
                                         <p class="font-bold text-lg ${statusColor}">${record.type}</p>
                                         <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
                                     </div>
-                                    <div class="w-20 h-20 rounded-md bg-gray-200" id="map-${record.id}"></div>
+                                    <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
+                                        <i data-lucide="map-pin"></i> 地圖
+                                    </button>
                                 </div>
                                 <div class="mt-2 flex space-x-2 overflow-x-auto">
-                                    ${(record.photoUrls || []).map((url, index) => `
-                                        <a href="${url}" target="_blank" rel="noopener noreferrer">
-                                            <div class="w-24 h-24 rounded-md bg-gray-100 bg-cover bg-center" style="background-image: url('${url}')"></div>
-                                            <p class="text-xs text-gray-500 truncate w-24">${record.descriptions[index] || ''}</p>
-                                        </a>
-                                    `).join('')}
+                                    ${(record.photoUrls && record.photoUrls.length > 0) ? 
+                                        `<button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" data-photos='${JSON.stringify(record.photoUrls || [])}' data-descriptions='${JSON.stringify(record.descriptions || [])}'>
+                                            <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
+                                        </button>` : 
+                                        '<span class="text-gray-400 text-sm">無照片</span>'
+                                    }
                                 </div>
                             `;
                             recordsListEl.appendChild(card);
@@ -531,6 +533,27 @@
                         });
                     });
                     state.activeListeners.push(unsubscribe);
+                    
+                    // 添加地圖按鈕點擊事件
+                    document.querySelectorAll('.map-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const lat = parseFloat(e.currentTarget.dataset.lat);
+                            const lng = parseFloat(e.currentTarget.dataset.lng);
+                            openMapModal(lat, lng);
+                        });
+                    });
+                    
+                    // 添加照片按鈕點擊事件
+                    document.querySelectorAll('.photo-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const photos = JSON.parse(e.currentTarget.dataset.photos);
+                            const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
+                            openPhotoModal(photos, descriptions);
+                        });
+                    });
+                    
+                    // 更新Lucide圖標
+                    lucide.createIcons();
                 };
 
                 dateInput.addEventListener('change', loadRecords);
@@ -739,6 +762,120 @@
             }
 
             // --- Modals ---
+            function openMapModal(lat, lng) {
+                const modalId = `map-modal-${Date.now()}`;
+                
+                const modalHTML = `
+                    <div id="${modalId}" class="modal-backdrop">
+                        <div class="modal-content w-[90%] max-w-[500px] bg-white rounded-lg shadow-xl flex flex-col">
+                            <div class="flex justify-between items-center p-4 border-b">
+                                <h3 class="font-bold text-lg">位置資訊</h3>
+                                <button class="close-btn text-gray-500 hover:text-gray-700">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <div id="modal-map" class="h-[300px] w-full"></div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', modalHTML);
+                lucide.createIcons();
+                
+                const modal = document.getElementById(modalId);
+                modal.querySelector('.close-btn').addEventListener('click', () => {
+                    modal.remove();
+                });
+                
+                // 初始化地圖
+                if (window.google && window.google.maps) {
+                    const mapDiv = document.getElementById('modal-map');
+                    const map = new google.maps.Map(mapDiv, {
+                        center: { lat, lng },
+                        zoom: 17
+                    });
+                    
+                    new google.maps.Marker({
+                        position: { lat, lng },
+                        map: map
+                    });
+                } else {
+                    document.getElementById('modal-map').innerHTML = 
+                        '<div class="p-4 text-center text-red-500">Google Maps 尚未載入，請稍後再試</div>';
+                }
+            }
+            
+            function openPhotoModal(photos, descriptions) {
+                const modalId = `photo-modal-${Date.now()}`;
+                
+                let photosHTML = '';
+                if (photos && photos.length > 0) {
+                    photosHTML = photos.map((url, index) => `
+                        <div class="photo-slide">
+                            <img src="${url}" class="max-h-[400px] max-w-full object-contain mx-auto" onerror="this.src='https://via.placeholder.com/400x300?text=照片載入失敗'">
+                            <p class="text-center mt-2 text-gray-600">${descriptions[index] || ''}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    photosHTML = '<div class="p-4 text-center text-gray-500">無照片</div>';
+                }
+                
+                const modalHTML = `
+                    <div id="${modalId}" class="modal-backdrop">
+                        <div class="modal-content w-[90%] max-w-[500px] bg-white rounded-lg shadow-xl flex flex-col">
+                            <div class="flex justify-between items-center p-4 border-b">
+                                <h3 class="font-bold text-lg">照片瀏覽</h3>
+                                <button class="close-btn text-gray-500 hover:text-gray-700">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <div class="p-4 photo-container">
+                                ${photosHTML}
+                            </div>
+                            ${photos.length > 1 ? `
+                            <div class="flex justify-center p-2 gap-2">
+                                <button class="prev-btn bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded">上一張</button>
+                                <button class="next-btn bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded">下一張</button>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', modalHTML);
+                lucide.createIcons();
+                
+                const modal = document.getElementById(modalId);
+                modal.querySelector('.close-btn').addEventListener('click', () => {
+                    modal.remove();
+                });
+                
+                // 如果有多張照片，設置輪播功能
+                if (photos.length > 1) {
+                    const slides = modal.querySelectorAll('.photo-slide');
+                    let currentSlide = 0;
+                    
+                    // 顯示第一張照片，隱藏其他照片
+                    slides.forEach((slide, index) => {
+                        slide.style.display = index === 0 ? 'block' : 'none';
+                    });
+                    
+                    // 上一張按鈕
+                    modal.querySelector('.prev-btn').addEventListener('click', () => {
+                        slides[currentSlide].style.display = 'none';
+                        currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+                        slides[currentSlide].style.display = 'block';
+                    });
+                    
+                    // 下一張按鈕
+                    modal.querySelector('.next-btn').addEventListener('click', () => {
+                        slides[currentSlide].style.display = 'none';
+                        currentSlide = (currentSlide + 1) % slides.length;
+                        slides[currentSlide].style.display = 'block';
+                    });
+                }
+            }
+
             function openUserModal(user = null) {
                 // ... Implementation is correct from previous version
             }
@@ -781,8 +918,12 @@
                             </div>
 
                             <div class="flex-shrink-0 pt-4">
-                                <div id="capture-controls" class="flex items-center justify-center">
+                                <div id="capture-controls" class="flex items-center justify-between">
+                                    <button id="switch-camera-btn" class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center">
+                                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                                    </button>
                                     <button id="capture-btn" class="w-16 h-16 bg-white rounded-full border-4 border-gray-500"></button>
+                                    <div class="w-10 h-10"></div><!-- 空白元素保持對稱 -->
                                 </div>
                                 <div id="confirm-controls" class="hide grid grid-cols-2 gap-2">
                                     <button id="add-another-btn" class="py-3 bg-gray-600 rounded-lg">拍下一張</button>
@@ -806,11 +947,43 @@
                 const captureControls = document.getElementById('capture-controls');
                 const confirmControls = document.getElementById('confirm-controls');
 
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
                     .then(stream => {
                         videoStream = stream;
                         video.srcObject = stream;
                         document.getElementById('camera-loader').classList.add('hide');
+                        
+                        // 初始化Lucide圖標
+                        lucide.createIcons();
+                        
+                        // 設置相機切換按鈕
+                        let currentFacingMode = "environment"; // 預設後鏡頭
+                        document.getElementById('switch-camera-btn').addEventListener('click', async () => {
+                            // 停止當前視訊流
+                            stopCamera();
+                            
+                            // 顯示載入中
+                            document.getElementById('camera-loader').classList.remove('hide');
+                            
+                            // 切換前後鏡頭
+                            currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+                            
+                            try {
+                                // 獲取新的視訊流
+                                const newStream = await navigator.mediaDevices.getUserMedia({ 
+                                    video: { facingMode: currentFacingMode }, 
+                                    audio: false 
+                                });
+                                
+                                videoStream = newStream;
+                                video.srcObject = newStream;
+                                document.getElementById('camera-loader').classList.add('hide');
+                            } catch (error) {
+                                console.error("切換相機失敗:", error);
+                                showToast("切換相機失敗，請重試", true);
+                                document.getElementById('camera-loader').classList.add('hide');
+                            }
+                        });
                     })
                     .catch(err => {
                         console.error("Camera error:", err);
@@ -1071,5 +1244,4 @@
         });
     </script>
 </body>
-
 </html>
