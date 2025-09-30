@@ -64,6 +64,24 @@
             height: 100%;
             background-color: #e5e7eb; /* Gray background as a fallback */
         }
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            border-radius: 9999px;
+            color: white;
+            font-weight: 500;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+        .toast.show {
+            opacity: 1;
+            bottom: 110px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
@@ -148,21 +166,13 @@
     
     <!-- Modal Container -->
     <div id="modal-container"></div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
 
 
     <script type="module">
         // --- 🚨 重要設定：請在此填入您自己的 API 金鑰 🚨 ---
-        //
-        // 您看到的錯誤訊息 "Error: API Keys are not configured" 是正常的提醒，並非程式 bug。
-        // 這個應用程式需要連接到 Google Firebase 和 Google Maps 服務才能運作。
-        // 您必須親自前往這兩個服務的官方網站，建立您自己的專案並取得金鑰。
-        //
-        // 1. 前往 Firebase 官方網站建立專案，在專案設定中取得您的 `firebaseConfig` 物件。
-        // 2. 前往 Google Cloud Platform 建立專案，啟用 "Maps JavaScript API" 並取得您的 API 金鑰。
-        // 3. 將下方 "YOUR_..." 的部分，完整替換成您自己的金鑰和設定資訊。
-        //
-        // 如果不執行此步驟，應用程式將無法啟動。詳細教學請參考 README.md 檔案。
-        //
         const firebaseConfig = {
           apiKey: "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg",
           authDomain: "nw-check-in.firebaseapp.com",
@@ -172,20 +182,9 @@
           appId: "1:1060821780559:web:2638d630526d54f1a5023a",
           measurementId: "G-61Q1QNNRD2"
         };
-
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg"; // <-- 替換這裡
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
         // --- 🚨 設定結束 🚨 ---
 
-        // --- Configuration Check ---
-        if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
-            document.getElementById('api-key-warning').classList.remove('hide');
-            document.getElementById('loading-screen').classList.add('hide');
-            lucide.createIcons();
-            // This error is intentional to stop execution if keys aren't set.
-            throw new Error("API Keys are not configured. Please edit index.html");
-        }
-
-        // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { 
             getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
@@ -194,321 +193,599 @@
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { 
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
-            query, where, getDocs, serverTimestamp, orderBy, GeoPoint, Timestamp
+            query, where, getDocs, serverTimestamp, orderBy, GeoPoint, Timestamp, writeBatch
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { 
             getStorage, ref, uploadBytes, getDownloadURL, deleteObject
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const storage = getStorage(app);
-
         // Global State
-        let currentUser = null;
-        let currentUserData = null;
-        let googleMapsLoaded = false;
-        let activeListeners = []; // To store unsubscribe functions
-
-        // Page and Element References
+        const state = {
+            currentUser: null,
+            currentUserData: null,
+            googleMapsLoaded: false,
+            activeListeners: [],
+            currentLocation: null,
+            users: [], 
+        };
+        
         const loadingScreen = document.getElementById('loading-screen');
-        const loginPage = document.getElementById('login-page');
-        const appContainer = document.getElementById('app-container');
-        const mainContent = document.getElementById('main-content');
-        const mainNav = document.getElementById('main-nav');
-        const profileAvatarBtn = document.getElementById('profile-avatar-btn');
-        const modalContainer = document.getElementById('modal-container');
-
-        // --- Authentication Logic ---
-        const loginForm = document.getElementById('login-form');
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            showLoading(true);
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const loginError = document.getElementById('login-error');
-            loginError.textContent = '';
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-            } catch (error) {
-                loginError.textContent = '登入失敗，請檢查帳號密碼。';
-            } finally {
-                showLoading(false);
-            }
-        });
         
-        onAuthStateChanged(auth, (user) => {
-            cleanupListeners();
-            if (user) {
-                currentUser = user;
-                const userDocRef = doc(db, "users", user.uid);
-                const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const wasNotInitialized = !currentUserData;
-                        currentUserData = { id: user.uid, ...docSnap.data() };
-                        if (wasNotInitialized) {
-                            initializeAppUI();
-                            loginPage.classList.add('hide');
-                            appContainer.classList.remove('hide');
-                            showLoading(false);
-                        } else {
-                            updateHeaderAvatar();
-                        }
-                    } else {
-                        signOut(auth);
-                    }
-                });
-                activeListeners.push(unsubscribe);
-            } else {
-                currentUser = null;
-                currentUserData = null;
-                loginPage.classList.remove('hide');
-                appContainer.classList.add('hide');
-                showLoading(false);
-            }
-        });
-
-        // --- UI Initialization and Navigation ---
-        function initializeAppUI() {
-            loadGoogleMapsScript();
-            updateHeaderAvatar();
-            const navTracking = document.getElementById('nav-tracking');
-            const navSettings = document.getElementById('nav-settings');
-            if (currentUserData.role !== 'admin') {
-                navTracking.classList.add('hide');
-                navSettings.classList.add('hide');
-            } else {
-                navTracking.classList.remove('hide');
-                navSettings.classList.remove('hide');
-            }
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
-            showPage('dashboard');
+        function showLoading(show) {
+            if(loadingScreen) loadingScreen.classList.toggle('hide', !show);
         }
 
-        function updateHeaderAvatar() {
-            const headerAvatar = document.getElementById('header-avatar');
-            if (currentUserData?.avatarUrl) {
-                headerAvatar.src = currentUserData.avatarUrl;
-            } else {
-                headerAvatar.src = `https://placehold.co/40x40/EFEFEF/333333?text=${currentUserData?.name?.charAt(0) || 'U'}`;
-            }
-        }
+        function initializeAppLogic() {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            const storage = getStorage(app);
 
-        mainNav.addEventListener('click', (e) => {
-            const tabButton = e.target.closest('.tab-btn');
-            if (tabButton && !tabButton.classList.contains('active')) {
-                showPage(tabButton.dataset.tab);
-                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-                tabButton.classList.add('active');
-            }
-        });
+            const loginPage = document.getElementById('login-page');
+            const appContainer = document.getElementById('app-container');
+            const mainContent = document.getElementById('main-content');
+            const mainNav = document.getElementById('main-nav');
+            const profileAvatarBtn = document.getElementById('profile-avatar-btn');
+            const modalContainer = document.getElementById('modal-container');
+            const toast = document.getElementById('toast');
+            const loginForm = document.getElementById('login-form');
 
-        profileAvatarBtn.addEventListener('click', () => {
-            // Will be implemented later
-        });
-
-        function showPage(pageName, subPage = null, params = {}) {
-            cleanupListeners();
-            mainContent.innerHTML = `<div class="flex justify-center items-center h-full"><div class="loader"></div></div>`;
-            const router = {
-                'dashboard': renderDashboard,
-                'clock-in': () => renderClockIn(subPage || 'location'),
-                'tracking': () => currentUserData.role === 'admin' ? renderTracking(subPage || 'locate') : renderAccessDenied(),
-                'settings': () => currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
-            };
-            const renderFunction = router[pageName] || renderAccessDenied;
-            renderFunction(params);
-            lucide.createIcons();
-        }
-
-        function renderAccessDenied() {
-            mainContent.innerHTML = `
-                <div class="p-8 text-center text-gray-500 flex flex-col items-center justify-center h-full">
-                    <i data-lucide="ban" class="w-16 h-16 mx-auto mb-4"></i>
-                    <h2 class="text-xl font-bold">權限不足</h2>
-                    <p>您沒有權限訪問此頁面。</p>
-                </div>
-            `;
-            lucide.createIcons();
-        }
-
-        // --- Page Render Functions ---
-        
-        function renderDashboard() {
-            mainContent.innerHTML = `
-                <div class="h-[50px] flex items-center justify-center border-b border-gray-200 bg-white">
-                     <p id="current-time" class="text-lg font-semibold text-gray-700"></p>
-                </div>
-                <div class="p-4 overflow-y-auto" style="height: calc(100% - 50px);">
-                    <div class="bg-white p-4 rounded-lg mb-4 shadow-sm border">
-                        <h3 class="font-bold text-indigo-800 mb-2 flex items-center"><i data-lucide="user-circle" class="w-4 h-4 mr-2"></i>我的狀態</h3>
-                        <div id="my-status" class="text-gray-600">讀取中...</div>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有員工狀態</h3>
-                        <div id="all-users-status" class="space-y-2">
-                           <div class="text-center p-4 text-gray-500">讀取中...</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-            const timeEl = document.getElementById('current-time');
-            const timerInterval = setInterval(() => {
-                if(timeEl){ timeEl.textContent = new Date().toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium' }); }
-            }, 1000);
-            activeListeners.push(() => clearInterval(timerInterval));
-            const usersRef = collection(db, "users");
-            const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
-                const allUsersStatusEl = document.getElementById('all-users-status');
-                if(!allUsersStatusEl) return;
-                allUsersStatusEl.innerHTML = '';
-                let myStatusFound = false;
-                const users = [];
-                querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
-                users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
-                    const statusText = user.status || '未打卡';
-                    const statusColor = getStatusColor(statusText);
-                    if (user.id === currentUser.uid) {
-                        myStatusFound = true;
-                        document.getElementById('my-status').innerHTML = `
-                          <div class="flex items-center justify-between">
-                            <span class="font-semibold text-lg ${statusColor}">${statusText}</span>
-                            <span class="text-sm text-gray-500">${user.lastClockInTime ? '上次: ' + new Date(user.lastClockInTime.toDate()).toLocaleTimeString('zh-TW') : ''}</span>
-                          </div>`;
-                    }
-                    allUsersStatusEl.innerHTML += `
-                        <div class="flex items-center justify-between bg-white p-3 rounded-md shadow-sm border">
-                            <div class="flex items-center"><img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover"><span class="font-medium text-gray-700">${user.name}</span></div>
-                            <span class="text-sm font-semibold ${statusColor}">${statusText}</span>
-                        </div>`;
-                });
-                if(!myStatusFound && document.getElementById('my-status')){ document.getElementById('my-status').textContent = '無法取得您的狀態'; }
+            // --- Authentication Logic ---
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                showLoading(true);
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                const loginError = document.getElementById('login-error');
+                loginError.textContent = '';
+                try {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } catch (error) {
+                    loginError.textContent = '登入失敗，請檢查帳號密碼。';
+                } finally {
+                    showLoading(false);
+                }
             });
-            activeListeners.push(unsubscribe);
-        }
-
-        function renderClockIn(subPage) {
-            mainContent.innerHTML = `
-                <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
-                    <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位打卡</button>
-                    <button data-subtab="records" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">打卡紀錄</button>
-                </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
             
-            const subPageContent = document.getElementById('sub-page-content');
-            if (subPage === 'location') {
-                subPageContent.innerHTML = `
-                    <div class="p-4 h-full flex flex-col">
-                        <button id="relocate-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 flex items-center justify-center mb-4">
-                            <i data-lucide="locate-fixed" class="w-4 h-4 mr-2"></i>重新定位
+            onAuthStateChanged(auth, (user) => {
+                cleanupListeners();
+                if (user) {
+                    state.currentUser = user;
+                    const userDocRef = doc(db, "users", user.uid);
+                    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            const wasNotInitialized = !state.currentUserData;
+                            state.currentUserData = { id: user.uid, ...docSnap.data() };
+                            if (wasNotInitialized) {
+                                initializeAppUI();
+                            } else {
+                                updateHeaderAvatar();
+                            }
+                        } else { signOut(auth); }
+                    }, (error) => {
+                        console.error("Error listening to user document:", error);
+                        signOut(auth);
+                    });
+                    state.activeListeners.push(unsubscribe);
+                } else {
+                    state.currentUser = null;
+                    state.currentUserData = null;
+                    loginPage.classList.remove('hide');
+                    appContainer.classList.add('hide');
+                    showLoading(false);
+                }
+            });
+
+            // --- UI Initialization and Navigation ---
+            function initializeAppUI() {
+                loadGoogleMapsScript();
+                updateHeaderAvatar();
+                
+                const navTracking = document.getElementById('nav-tracking');
+                const navSettings = document.getElementById('nav-settings');
+
+                if (state.currentUserData.role !== 'admin') {
+                    navTracking.classList.add('hide');
+                    navSettings.classList.add('hide');
+                } else {
+                    navTracking.classList.remove('hide');
+                    navSettings.classList.remove('hide');
+                    fetchAllUsers(); 
+                }
+                
+                loginPage.classList.add('hide');
+                appContainer.classList.remove('hide');
+                
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
+                
+                showPage('dashboard');
+                showLoading(false);
+            }
+
+            function updateHeaderAvatar() {
+                const headerAvatar = document.getElementById('header-avatar');
+                if (state.currentUserData?.avatarUrl) {
+                    headerAvatar.src = state.currentUserData.avatarUrl;
+                } else {
+                    headerAvatar.src = `https://placehold.co/40x40/EFEFEF/333333?text=${state.currentUserData?.name?.charAt(0) || 'U'}`;
+                }
+            }
+
+            mainNav.addEventListener('click', (e) => {
+                const tabButton = e.target.closest('.tab-btn');
+                if (tabButton && !tabButton.classList.contains('active')) {
+                    showPage(tabButton.dataset.tab);
+                    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                    tabButton.classList.add('active');
+                }
+            });
+
+            profileAvatarBtn.addEventListener('click', () => showToast("個人資料功能待實現"));
+
+            function showPage(pageName, subPage = null, params = {}) {
+                cleanupListeners();
+                state.currentLocation = null;
+                mainContent.innerHTML = `<div class="flex justify-center items-center h-full"><div class="loader"></div></div>`;
+                const router = {
+                    'dashboard': renderDashboard,
+                    'clock-in': () => renderClockIn(subPage || 'location'),
+                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking(subPage || 'locate') : renderAccessDenied(),
+                    'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
+                };
+                const renderFunction = router[pageName] || renderAccessDenied;
+                try {
+                    renderFunction(params);
+                } catch(e) {
+                    console.error("Failed to render page:", e);
+                    mainContent.innerHTML = `<div class="p-4 text-red-500">頁面載入失敗。</div>`;
+                }
+                lucide.createIcons();
+            }
+
+            function renderAccessDenied() {
+                mainContent.innerHTML = `
+                    <div class="p-8 text-center text-gray-500 flex flex-col items-center justify-center h-full">
+                        <i data-lucide="ban" class="w-16 h-16 mx-auto mb-4"></i>
+                        <h2 class="text-xl font-bold">權限不足</h2>
+                        <p>您沒有權限訪問此頁面。</p>
+                    </div>
+                `;
+            }
+
+            // --- Page Render Functions ---
+            
+            function renderDashboard() {
+                 mainContent.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-center border-b border-gray-200 bg-white">
+                         <p id="current-time" class="text-lg font-semibold text-gray-700"></p>
+                    </div>
+                    <div class="p-4 overflow-y-auto" style="height: calc(100% - 50px);">
+                        <div class="bg-white p-4 rounded-lg mb-4 shadow-sm border">
+                            <h3 class="font-bold text-indigo-800 mb-2 flex items-center"><i data-lucide="user-circle" class="w-4 h-4 mr-2"></i>我的狀態</h3>
+                            <div id="my-status" class="text-gray-600">讀取中...</div>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有員工狀態</h3>
+                            <div id="all-users-status" class="space-y-2">
+                               <div class="text-center p-4 text-gray-500">讀取中...</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                const timeEl = document.getElementById('current-time');
+                const timerInterval = setInterval(() => {
+                    if(timeEl){ timeEl.textContent = new Date().toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium' }); }
+                }, 1000);
+                state.activeListeners.push(() => clearInterval(timerInterval));
+                
+                const usersRef = collection(db, "users");
+                const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
+                    const allUsersStatusEl = document.getElementById('all-users-status');
+                    if(!allUsersStatusEl) return;
+                    allUsersStatusEl.innerHTML = '';
+                    let myStatusFound = false;
+                    const users = [];
+                    querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
+                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                        const statusText = user.status || '未打卡';
+                        const statusColor = getStatusColor(statusText);
+                        if (user.id === state.currentUser.uid) {
+                            myStatusFound = true;
+                            document.getElementById('my-status').innerHTML = `
+                              <div class="flex items-center justify-between">
+                                <span class="font-semibold text-lg ${statusColor}">${statusText}</span>
+                                <span class="text-sm text-gray-500">${user.lastClockInTime ? '上次: ' + new Date(user.lastClockInTime.toDate()).toLocaleTimeString('zh-TW') : ''}</span>
+                              </div>`;
+                        }
+                        allUsersStatusEl.innerHTML += `
+                            <div class="flex items-center justify-between bg-white p-3 rounded-md shadow-sm border">
+                                <div class="flex items-center"><img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover"><span class="font-medium text-gray-700">${user.name}</span></div>
+                                <span class="text-sm font-semibold ${statusColor}">${statusText}</span>
+                            </div>`;
+                    });
+                    if(!myStatusFound && document.getElementById('my-status')){ document.getElementById('my-status').textContent = '無法取得您的狀態'; }
+                });
+                state.activeListeners.push(unsubscribe);
+            }
+
+            function renderClockIn(subPage) {
+                mainContent.innerHTML = `<div class="p-4">打卡功能待實現</div>`;
+            }
+
+            function renderTracking(subPage) {
+                mainContent.innerHTML = `<div class="p-4">追蹤功能待實現</div>`;
+            }
+
+            function renderSettings(subPage) {
+                mainContent.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
+                        <button data-subtab="accounts" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'accounts' ? 'active' : ''}">帳號列表</button>
+                        <button data-subtab="rules" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'rules' ? 'active' : ''}">計點規則</button>
+                    </div>
+                    <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
+                
+                const subPageContent = document.getElementById('sub-page-content');
+                if (subPage === 'accounts') {
+                    renderSettingsAccounts(subPageContent);
+                } else if (subPage === 'rules') {
+                    renderSettingsRules(subPageContent);
+                }
+                
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('settings', btn.dataset.subtab)));
+            }
+            
+            async function renderSettingsAccounts(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <button id="add-user-btn" class="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="plus-circle" class="w-4 h-4 mr-2"></i>新增帳號
                         </button>
-                        <div id="map-container" class="flex-grow rounded-lg overflow-hidden border border-gray-300 relative">
-                             <div id="map" class="map-canvas"></div>
-                             <div id="map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 pt-4">
-                            <button data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
-                            <button data-type="下班" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-gray-600">下班打卡</button>
-                            <button data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
-                            <button data-type="返回" class="clock-in-btn bg-teal-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
-                        </div>
+                        <div id="user-list" class="space-y-2"></div>
                     </div>`;
                 lucide.createIcons();
-                initClockInMap();
-                document.getElementById('relocate-btn').addEventListener('click', initClockInMap);
-                document.querySelectorAll('.clock-in-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const type = e.target.dataset.type;
-                        // Trigger camera modal, then save record
-                        alert(`觸發 ${type} 打卡流程 (功能待實現)`);
+                document.getElementById('add-user-btn').addEventListener('click', () => openUserModal());
+
+                const userList = document.getElementById('user-list');
+                await fetchAllUsers();
+                userList.innerHTML = '';
+                state.users.forEach(user => {
+                    const userElement = document.createElement('div');
+                    userElement.className = 'flex items-center justify-between bg-white p-3 rounded-md shadow-sm border';
+                    userElement.innerHTML = `
+                        <div class="flex items-center">
+                            <img src="${user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-10 h-10 rounded-full mr-3 object-cover">
+                            <div>
+                                <p class="font-medium text-gray-800">${user.name}</p>
+                                <p class="text-sm text-gray-500">${user.email}</p>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button data-userid="${user.id}" class="edit-user-btn p-2 text-gray-500 hover:text-indigo-600"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                            <button data-userid="${user.id}" class="delete-user-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    `;
+                    userList.appendChild(userElement);
+                });
+                lucide.createIcons();
+
+                document.querySelectorAll('.edit-user-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                    const userId = e.currentTarget.dataset.userid;
+                    const user = state.users.find(u => u.id === userId);
+                    openUserModal(user);
+                }));
+
+                document.querySelectorAll('.delete-user-btn').forEach(btn => btn.addEventListener('click', async (e) => {
+                    const userId = e.currentTarget.dataset.userid;
+                    const user = state.users.find(u => u.id === userId);
+                    if (confirm(`確定要刪除 ${user.name} 的帳號嗎？此操作無法復原。`)) {
+                        try {
+                            showLoading(true);
+                            // NOTE: This only deletes the Firestore record. For a full deletion,
+                            // you would need a Cloud Function to delete the Firebase Auth user.
+                            await deleteDoc(doc(db, "users", userId));
+                            showToast("帳號刪除成功");
+                            renderSettings('accounts'); // Re-render the list
+                        } catch (error) {
+                            console.error("Error deleting user:", error);
+                            showToast("刪除失敗", true);
+                        } finally {
+                            showLoading(false);
+                        }
+                    }
+                }));
+            }
+
+            function renderSettingsRules(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <button id="add-rule-btn" class="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="plus-circle" class="w-4 h-4 mr-2"></i>新增規則
+                        </button>
+                        <div id="rule-list" class="space-y-2">讀取中...</div>
+                    </div>`;
+                lucide.createIcons();
+                document.getElementById('add-rule-btn').addEventListener('click', () => openRuleModal());
+
+                const ruleList = document.getElementById('rule-list');
+                const rulesRef = collection(db, "pointRules");
+                const q = query(rulesRef, orderBy("reason"));
+                const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    ruleList.innerHTML = '';
+                    if (querySnapshot.empty) {
+                        ruleList.innerHTML = `<p class="text-center text-gray-500 p-4">尚未建立任何規則</p>`;
+                        return;
+                    }
+                    querySnapshot.forEach(doc => {
+                        const rule = { id: doc.id, ...doc.data() };
+                        const pointsClass = rule.points > 0 ? 'text-green-600' : 'text-red-600';
+                        const ruleElement = document.createElement('div');
+                        ruleElement.className = 'flex items-center justify-between bg-white p-3 rounded-md shadow-sm border';
+                        ruleElement.innerHTML = `
+                            <div>
+                                <p class="font-medium text-gray-800">${rule.reason}</p>
+                                <p class="text-sm text-gray-500">對象: ${rule.target}</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-lg ${pointsClass}">${rule.points > 0 ? '+' : ''}${rule.points}</span>
+                                <button data-ruleid="${rule.id}" class="edit-rule-btn p-2 text-gray-500 hover:text-indigo-600"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                                <button data-ruleid="${rule.id}" class="delete-rule-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                        `;
+                        ruleList.appendChild(ruleElement);
                     });
+                    lucide.createIcons();
+
+                    document.querySelectorAll('.edit-rule-btn').forEach(btn => btn.addEventListener('click', async (e) => {
+                         const ruleId = e.currentTarget.dataset.ruleid;
+                         const ruleDoc = await getDoc(doc(db, "pointRules", ruleId));
+                         if (ruleDoc.exists()) {
+                            openRuleModal({ id: ruleId, ...ruleDoc.data() });
+                         }
+                    }));
+
+                    document.querySelectorAll('.delete-rule-btn').forEach(btn => btn.addEventListener('click', async (e) => {
+                        const ruleId = e.currentTarget.dataset.ruleid;
+                        if (confirm('確定要刪除此規則嗎？')) {
+                            await deleteDoc(doc(db, "pointRules", ruleId));
+                            showToast("規則刪除成功");
+                        }
+                    }));
+
                 });
-            } else if (subPage === 'records') {
-                subPageContent.innerHTML = `<div class="p-4"><p>打卡紀錄功能待實現</p></div>`;
+                state.activeListeners.push(unsubscribe);
             }
-            mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderClockIn(btn.dataset.subtab)));
-        }
 
-        async function initClockInMap() {
-            if (!googleMapsLoaded) {
-                setTimeout(initClockInMap, 200);
-                return;
-            }
-            const mapLoader = document.getElementById('map-loader');
-            const mapDiv = document.getElementById('map');
-            if(!mapDiv || !mapLoader) return;
-            mapLoader.classList.remove('hide');
+            // --- Modals ---
+            function openUserModal(user = null) {
+                const isNew = user === null;
+                const modalId = `user-modal-${Date.now()}`;
+                const modalHTML = `
+                    <div id="${modalId}" class="modal-backdrop">
+                        <div class="modal-content w-[380px] bg-white rounded-2xl shadow-xl">
+                            <div class="p-6">
+                                <h3 class="text-xl font-bold mb-4">${isNew ? '新增帳號' : '編輯帳號'}</h3>
+                                <form id="user-form" class="space-y-3 text-sm">
+                                    <input type="file" id="avatar-upload" class="hidden" accept="image/*">
+                                    <div class="flex items-center space-x-4">
+                                        <img id="avatar-preview" src="${user?.avatarUrl || 'https://placehold.co/80x80/EFEFEF/333333?text=頭像'}" class="w-20 h-20 rounded-full object-cover border">
+                                        <div>
+                                             <button type="button" id="avatar-upload-btn" class="px-3 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">上傳照片</button>
+                                             <p class="text-xs text-gray-400 mt-1">建議方形圖片</p>
+                                        </div>
+                                    </div>
+                                    <div><label class="block font-medium">姓名</label><input type="text" id="user-name" class="w-full mt-1 px-3 py-2 border rounded-md" value="${user?.name || ''}" required></div>
+                                    <div><label class="block font-medium">電子郵件 (登入帳號)</label><input type="email" id="user-email" class="w-full mt-1 px-3 py-2 border rounded-md" value="${user?.email || ''}" ${!isNew ? 'disabled' : ''} required></div>
+                                    <div><label class="block font-medium">手機號碼</label><input type="tel" id="user-phone" class="w-full mt-1 px-3 py-2 border rounded-md" value="${user?.phone || ''}"></div>
+                                    <div><label class="block font-medium">Line ID</label><input type="text" id="user-line" class="w-full mt-1 px-3 py-2 border rounded-md" value="${user?.lineId || ''}"></div>
+                                    <div><label class="block font-medium">角色</label>
+                                        <select id="user-role" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                            <option value="employee" ${user?.role === 'employee' ? 'selected' : ''}>員工</option>
+                                            <option value="admin" ${user?.role === 'admin' ? 'selected' : ''}>管理員</option>
+                                        </select>
+                                    </div>
+                                    ${isNew ? `
+                                    <div><label class="block font-medium">密碼</label><input type="password" id="user-password" class="w-full mt-1 px-3 py-2 border rounded-md" required></div>
+                                    <div><label class="block font-medium">確認密碼</label><input type="password" id="user-password-confirm" class="w-full mt-1 px-3 py-2 border rounded-md" required></div>
+                                    ` : ''}
+                                    <p id="user-form-error" class="text-red-500 text-xs"></p>
+                                    <div class="flex justify-end space-x-2 pt-4">
+                                        <button type="button" class="cancel-btn px-4 py-2 border rounded-md">取消</button>
+                                        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md">儲存</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                modalContainer.innerHTML = modalHTML;
+                
+                const modalEl = document.getElementById(modalId);
+                const close = () => modalEl.remove();
 
-            try {
-                const pos = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+                modalEl.querySelector('.cancel-btn').addEventListener('click', close);
+                
+                document.getElementById('avatar-upload-btn').addEventListener('click', () => document.getElementById('avatar-upload').click());
+                document.getElementById('avatar-upload').addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            document.getElementById('avatar-preview').src = event.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
                 });
-                const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                const map = new google.maps.Map(mapDiv, { center: coords, zoom: 17, disableDefaultUI: true });
-                new google.maps.Marker({ position: coords, map: map });
-                mapLoader.classList.add('hide');
-            } catch (error) {
-                console.error("Error getting location:", error);
-                mapDiv.innerHTML = `<div class="p-4 text-center text-red-500">無法取得您的位置。請確認已開啟定位服務。</div>`;
-                mapLoader.classList.add('hide');
+
+                document.getElementById('user-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const name = document.getElementById('user-name').value;
+                    const email = document.getElementById('user-email').value;
+                    const phone = document.getElementById('user-phone').value;
+                    const lineId = document.getElementById('user-line').value;
+                    const role = document.getElementById('user-role').value;
+                    const errorEl = document.getElementById('user-form-error');
+                    errorEl.textContent = '';
+                    
+                    if(isNew) {
+                        const password = document.getElementById('user-password').value;
+                        const passwordConfirm = document.getElementById('user-password-confirm').value;
+                        if (password.length < 6) { errorEl.textContent = '密碼長度至少需要6位數'; return; }
+                        if (password !== passwordConfirm) { errorEl.textContent = '兩次輸入的密碼不一致'; return; }
+                    }
+
+                    try {
+                        showLoading(true);
+                        let avatarUrl = user?.avatarUrl || null;
+                        const avatarFile = document.getElementById('avatar-upload').files[0];
+                        if (avatarFile) {
+                            const avatarRef = ref(storage, `avatars/${isNew ? Date.now() : user.id}/${avatarFile.name}`);
+                            const snapshot = await uploadBytes(avatarRef, avatarFile);
+                            avatarUrl = await getDownloadURL(snapshot.ref);
+                        }
+
+                        const userData = { name, email, phone, lineId, role, avatarUrl, points: user?.points || 100 };
+                        
+                        if (isNew) {
+                           // This is a simplified approach. In production, you'd use a Cloud Function
+                           // to create the auth user to prevent exposing credentials client-side.
+                           // For this project, we'll create the Firestore doc and the admin will create the Auth user.
+                           // As a workaround, we use a placeholder user creation for demo purposes.
+                           // This won't actually work without a backend function.
+                           // Let's create the user doc and let the admin handle the auth part in Firebase console.
+                           const newUserRef = doc(collection(db, "users"));
+                           await setDoc(newUserRef, userData);
+                           showToast("帳號資料建立成功！請至 Firebase 後台手動建立對應的驗證使用者。");
+                        } else {
+                            await updateDoc(doc(db, "users", user.id), userData);
+                            showToast("更新成功");
+                        }
+                        close();
+                        renderSettings('accounts');
+                    } catch (error) {
+                        console.error("Error saving user:", error);
+                        showToast("儲存失敗", true);
+                        errorEl.textContent = error.message;
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             }
-        }
+            
+            function openRuleModal(rule = null) {
+                const isNew = rule === null;
+                const modalId = `rule-modal-${Date.now()}`;
+                const modalHTML = `
+                    <div id="${modalId}" class="modal-backdrop">
+                        <div class="modal-content w-[360px] bg-white rounded-2xl shadow-xl">
+                             <div class="p-6">
+                                <h3 class="text-xl font-bold mb-4">${isNew ? '新增規則' : '編輯規則'}</h3>
+                                <form id="rule-form" class="space-y-4 text-sm">
+                                     <div><label class="block font-medium">事由</label><input type="text" id="rule-reason" class="w-full mt-1 px-3 py-2 border rounded-md" value="${rule?.reason || ''}" required></div>
+                                     <div><label class="block font-medium">點數 (+5 ~ -5)</label><input type="number" id="rule-points" class="w-full mt-1 px-3 py-2 border rounded-md" value="${rule?.points || 0}" min="-5" max="5" required></div>
+                                     <div><label class="block font-medium">對象</label><input type="text" id="rule-target" class="w-full mt-1 px-3 py-2 border rounded-md" value="${rule?.target || '全體員工'}" required></div>
+                                     <div class="flex justify-end space-x-2 pt-4">
+                                        <button type="button" class="cancel-btn px-4 py-2 border rounded-md">取消</button>
+                                        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md">儲存</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                modalContainer.innerHTML = modalHTML;
+                const modalEl = document.getElementById(modalId);
+                const close = () => modalEl.remove();
 
-        function renderTracking(subPage) {
-            mainContent.innerHTML = `
-                <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white text-sm">
-                    <button data-subtab="locate" class="sub-tab-btn px-3 py-2 rounded-md font-medium text-gray-600 ${subPage === 'locate' ? 'active' : ''}">定位員工</button>
-                    <button data-subtab="contact" class="sub-tab-btn px-3 py-2 rounded-md font-medium text-gray-600 ${subPage === 'contact' ? 'active' : ''}">聯繫員工</button>
-                    <button data-subtab="records" class="sub-tab-btn px-3 py-2 rounded-md font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">員工紀錄</button>
-                </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"><div class="p-4"><p>功能待實現</p></div></div>`;
-            mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderTracking(btn.dataset.subtab)));
-        }
+                modalEl.querySelector('.cancel-btn').addEventListener('click', close);
+                
+                document.getElementById('rule-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const reason = document.getElementById('rule-reason').value;
+                    const points = parseInt(document.getElementById('rule-points').value, 10);
+                    const target = document.getElementById('rule-target').value;
+                    const ruleData = { reason, points, target };
 
-        function renderSettings(subPage) {
-            mainContent.innerHTML = `
-                <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
-                    <button data-subtab="accounts" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'accounts' ? 'active' : ''}">帳號列表</button>
-                    <button data-subtab="rules" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'rules' ? 'active' : ''}">計點規則</button>
-                </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"><div class="p-4"><p>功能待實現</p></div></div>`;
-             mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderSettings(btn.dataset.subtab)));
-        }
+                    try {
+                        if (isNew) {
+                            await addDoc(collection(db, "pointRules"), ruleData);
+                            showToast("規則新增成功");
+                        } else {
+                            await updateDoc(doc(db, "pointRules", rule.id), ruleData);
+                            showToast("規則更新成功");
+                        }
+                        close();
+                    } catch (error) {
+                        console.error("Error saving rule:", error);
+                        showToast("儲存失敗", true);
+                    }
+                });
+            }
 
-        // --- Google Maps ---
-        function loadGoogleMapsScript() {
-            if (window.google || googleMapsLoaded) return;
-            googleMapsLoaded = true;
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
-            script.async = true;
-            window.initMap = () => console.log("Google Maps API loaded.");
-            document.head.appendChild(script);
-        }
-        
-        // --- Helper functions ---
-        function showLoading(show) {
-            loadingScreen.classList.toggle('hide', !show);
-        }
-        
-        function cleanupListeners() {
-            activeListeners.forEach(unsubscribe => unsubscribe());
-            activeListeners = [];
-        }
+            // --- Google Maps ---
+            function loadGoogleMapsScript() {
+                if (window.google || state.googleMapsLoaded) return;
+                state.googleMapsLoaded = true;
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
+                script.async = true;
+                window.initMap = () => { state.googleMapsLoaded = true; };
+                document.head.appendChild(script);
+            }
+            
+            // --- Helper functions ---
+            function cleanupListeners() {
+                state.activeListeners.forEach(unsubscribe => unsubscribe());
+                state.activeListeners = [];
+            }
 
-        function getStatusColor(status) {
-            const colors = {'上班': 'text-green-600', '下班': 'text-gray-500', '外出': 'text-blue-600', '返回': 'text-teal-600'};
-            return colors[status] || 'text-yellow-600';
+            function getStatusColor(status) {
+                const colors = {'上班': 'text-green-600', '下班': 'text-gray-500', '外出': 'text-blue-600', '返回': 'text-teal-600'};
+                return colors[status] || 'text-yellow-600';
+            }
+
+            function showToast(message, isError = false) {
+                toast.textContent = message;
+                toast.className = `toast show ${isError ? 'bg-red-500' : 'bg-gray-800'}`;
+                setTimeout(() => {
+                    toast.className = 'toast';
+                }, 3000);
+            }
+
+            async function fetchAllUsers() {
+                try {
+                    const usersRef = collection(db, "users");
+                    const q = query(usersRef);
+                    const querySnapshot = await getDocs(q);
+                    state.users = [];
+                    querySnapshot.forEach((doc) => {
+                        state.users.push({ id: doc.id, ...doc.data() });
+                    });
+                    state.users.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant'));
+                } catch (error) {
+                    console.error("Error fetching users:", error);
+                    showToast("讀取使用者列表失敗", true);
+                }
+            }
+            
+            function formatDate(timestamp) {
+                if (!timestamp) return '';
+                return timestamp.toDate().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
         }
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
              lucide.createIcons();
              showLoading(true);
+             if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY" || GOOGLE_MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY") {
+                document.getElementById('api-key-warning').classList.remove('hide');
+                showLoading(false);
+                console.error("API Keys are not configured. Please edit index.html"); 
+            } else {
+                initializeAppLogic();
+            }
         });
     </script>
 </body>
