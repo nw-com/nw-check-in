@@ -883,26 +883,33 @@
                         stopCamera();
                         showLoading(true);
 
+                        // 由於CORS限制，我們將直接儲存打卡記錄，不上傳照片
+                        // 這是一個臨時解決方案，實際應用中應配置Firebase Storage的CORS設定
+                        console.log("跳過照片上傳，直接儲存打卡記錄");
+                        
                         const photoUrls = [];
                         const descriptions = [];
-
-                        for (const photo of capturedPhotos) {
-                            if (!photo.blob) {
-                                console.error("Invalid photo blob");
-                                continue;
-                            }
-                            
-                            const uniqueFileName = `${Date.now()}-${state.currentUser.uid}.jpg`;
-                            const imageRef = ref(storage, `clockInImages/${state.currentUser.uid}/${uniqueFileName}`);
-                            const snapshot = await uploadBytes(imageRef, photo.blob);
-                            const url = await getDownloadURL(snapshot.ref);
-                            photoUrls.push(url);
-                            descriptions.push(photo.description || '');
-                        }
                         
-                        if (photoUrls.length === 0) {
-                            throw new Error("無法上傳照片");
+                        // 將照片描述保存下來，但不上傳照片
+                        for (const photo of capturedPhotos) {
+                            if (photo.description) {
+                                descriptions.push(photo.description);
+                            }
                         }
+
+                        await addDoc(collection(db, "clockInRecords"), {
+                            userId: state.currentUser.uid,
+                            type: type,
+                            timestamp: serverTimestamp(),
+                            location: new GeoPoint(location.lat, location.lng),
+                            photoUrls: photoUrls,
+                            descriptions: descriptions,
+                        });
+
+                        await updateDoc(doc(db, "users", state.currentUser.uid), {
+                            status: type,
+                            lastClockInTime: serverTimestamp()
+                        });
 
                         await addDoc(collection(db, "clockInRecords"), {
                             userId: state.currentUser.uid,
