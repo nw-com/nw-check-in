@@ -476,77 +476,79 @@
                 `;
 
                 const dateInput = document.getElementById('record-date');
-                const loadRecords = () => {
-                    const selectedDate = new Date(dateInput.value);
-                    const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                    const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
-                    
-                    const recordsRef = collection(db, "clockInRecords");
-                    const q = query(recordsRef, 
-                        where("userId", "==", state.currentUser.uid),
-                        orderBy("timestamp", "desc")
-                    );
+                    const loadRecords = () => {
+                        try {
+                            const recordsRef = collection(db, "clockInRecords");
+                            const q = query(recordsRef, 
+                                where("userId", "==", state.currentUser.uid),
+                                orderBy("timestamp", "desc")
+                            );
 
-                    getDocs(q).then((querySnapshot) => {
-                        const recordsListEl = document.getElementById('records-list');
-                        if (!recordsListEl) return;
-                        recordsListEl.innerHTML = '';
-                        if (querySnapshot.empty) {
-                            recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
-                            return;
-                        }
-                        
-                        // 将查询结果转换为数组并按时间排序（从新到旧）
-                        const records = [];
-                        querySnapshot.forEach(doc => {
-                            console.log("Found record:", doc.id, doc.data());
-                            records.push({ id: doc.id, ...doc.data() });
-                        });
-                        
-                        console.log("Total records found:", records.length);
-                        
-                        // 按时间从新到旧排序
-                        records.sort((a, b) => {
-                            const timeA = a.timestamp?.toDate?.() || new Date(0);
-                            const timeB = b.timestamp?.toDate?.() || new Date(0);
-                            return timeB - timeA; // 降序排列，最新的在前
-                        });
-                        
-                        // 渲染所有记录
-                        records.forEach(record => {
-                            const card = document.createElement('div');
-                            card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
-                            const statusColor = getStatusColor(record.type);
-                            card.innerHTML = `
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="font-bold text-lg ${statusColor}">${record.type}</p>
-                                        <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
-                                    </div>
-                                    <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
-                                        <i data-lucide="map-pin"></i> 地圖
-                                    </button>
-                                </div>
-                                <div class="mt-2 flex space-x-2 overflow-x-auto">
-                                    <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
-                                        data-photos='${JSON.stringify(record.photoUrls || [])}' 
-                                        data-descriptions='${JSON.stringify(record.descriptions || [])}'>
-                                        <i data-lucide="image"></i> 照片 (${record.photoUrls?.length || record.descriptions?.length || 0})
-                                    </button>
-                                </div>
-                            `;
-                            recordsListEl.appendChild(card);
-                            // Init small map
-                            if (state.googleMapsLoaded && record.location) {
-                                new google.maps.Map(document.getElementById(`map-${record.id}`), {
-                                    center: { lat: record.location.latitude, lng: record.location.longitude },
-                                    zoom: 15,
-                                    disableDefaultUI: true,
+                            getDocs(q).then((querySnapshot) => {
+                                const recordsListEl = document.getElementById('records-list');
+                                if (!recordsListEl) return;
+                                recordsListEl.innerHTML = '';
+                                if (querySnapshot.empty) {
+                                    recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                                    return;
+                                }
+                                
+                                // 将查询结果转换为数组并按时间排序（从新到旧）
+                                const records = [];
+                                querySnapshot.forEach(doc => {
+                                    console.log("Found record:", doc.id, doc.data());
+                                    records.push({ id: doc.id, ...doc.data() });
                                 });
-                            }
-                        });
+                                
+                                console.log("Total records found:", records.length);
+                                
+                                // 按时间从新到旧排序
+                                records.sort((a, b) => {
+                                    const timeA = a.timestamp?.toDate?.() || new Date(0);
+                                    const timeB = b.timestamp?.toDate?.() || new Date(0);
+                                    return timeB - timeA; // 降序排列，最新的在前
+                                });
+                                
+                                // 渲染所有记录
+                                records.forEach(record => {
+                                    const card = document.createElement('div');
+                                    card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
+                                    const statusColor = getStatusColor(record.type);
+                                    card.innerHTML = `
+                                       <div class="flex justify-between items-start">
+                                           <div>
+                                               <p class="font-bold text-lg ${statusColor}">${record.type}</p>
+                                               <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
+                                           </div>
+                                           <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
+                                               <i data-lucide="map-pin"></i> 地圖
+                                           </button>
+                                       </div>
+                                       <div class="mt-2 flex space-x-2 overflow-x-auto">
+                                           <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                               data-photos='${JSON.stringify(record.photoUrls || [])}' 
+                                               data-descriptions='${JSON.stringify(record.descriptions || [])}'>
+                                               <i data-lucide="image"></i> 照片 (${record.photoUrls?.length || record.descriptions?.length || 0})
+                                           </button>
+                                       </div>
+                                   `;
+                                    recordsListEl.appendChild(card);
+                                    // Init small map
+                                    if (state.googleMapsLoaded && record.location) {
+                                        new google.maps.Map(document.getElementById(`map-${record.id}`), {
+                                            center: { lat: record.location.latitude, lng: record.location.longitude },
+                                            zoom: 15,
+                                            disableDefaultUI: true,
+                                        });
+                                    }
+                                });
+                    }).catch(error => {
+                        console.error("Error getting records:", error);
+                        const recordsListEl = document.getElementById('records-list');
+                        if (recordsListEl) {
+                            recordsListEl.innerHTML = `<p class="text-center text-red-500 p-4">載入記錄失敗，請重試</p>`;
+                        }
                     });
-                    state.activeListeners.push(unsubscribe);
                     
                     // 添加地圖按鈕點擊事件
                     setTimeout(() => {
