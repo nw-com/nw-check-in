@@ -487,20 +487,23 @@
                         orderBy("timestamp", "desc")
                     );
 
-                    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    getDocs(q).then((querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
                         if (!recordsListEl) return;
                         recordsListEl.innerHTML = '';
                         if (querySnapshot.empty) {
-                            recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">本日無打卡紀錄</p>`;
+                            recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
                             return;
                         }
                         
                         // 将查询结果转换为数组并按时间排序（从新到旧）
                         const records = [];
                         querySnapshot.forEach(doc => {
+                            console.log("Found record:", doc.id, doc.data());
                             records.push({ id: doc.id, ...doc.data() });
                         });
+                        
+                        console.log("Total records found:", records.length);
                         
                         // 按时间从新到旧排序
                         records.sort((a, b) => {
@@ -935,7 +938,7 @@
                                     <button id="switch-camera-btn" class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center">
                                         <i data-lucide="refresh-cw" class="w-6 h-6"></i>
                                     </button>
-                                    <button id="capture-btn" class="w-20 h-20 bg-white rounded-full border-4 border-gray-500 flex items-center justify-center">
+                                    <button id="capture-btn" class="w-20 h-20 bg-white rounded-full border-4 border-gray-500 flex items-center justify-center" style="z-index: 10;">
                                         <i data-lucide="camera" class="w-10 h-10 text-gray-800"></i>
                                     </button>
                                     <div class="w-12 h-12"></div><!-- 空白元素保持對稱 -->
