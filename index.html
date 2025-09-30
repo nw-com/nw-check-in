@@ -182,7 +182,7 @@
           appId: "1:1060821780559:web:2638d630526d54f1a5023a",
           measurementId: "G-61Q1QNNRD2"
         };
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtycJgfz8UsXWlji63DkXpA4kmyY";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
         // --- 🚨 設定結束 🚨 ---
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -832,38 +832,76 @@
                 });
                 
                 const saveAndPrepareNext = () => {
-                    // Apply watermark and save
-                    const description = descriptionInput.value;
-                    const watermarkedBlob = applyWatermark(canvas, location, description);
-                    capturedPhotos.push({ blob: watermarkedBlob, description });
+                    try {
+                        // 確保canvas有內容
+                        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+                            console.error("Canvas is empty or not properly initialized");
+                            showToast("照片處理失敗，請重試", true);
+                            return;
+                        }
+                        
+                        // Apply watermark and save
+                        const description = descriptionInput.value;
+                        console.log("Applying watermark to canvas:", canvas.width, "x", canvas.height);
+                        const watermarkedBlob = applyWatermark(canvas, location, description);
+                        
+                        if (!watermarkedBlob) {
+                            console.error("Failed to create blob from canvas");
+                            showToast("照片轉換失敗，請重試", true);
+                            return;
+                        }
+                        
+                        capturedPhotos.push({ blob: watermarkedBlob, description });
+                        console.log("Photo saved, total photos:", capturedPhotos.length);
 
-                    // Reset for next photo
-                    descriptionInput.value = '';
-                    cameraView.classList.remove('hide');
-                    previewView.classList.add('hide');
-                    captureControls.classList.remove('hide');
-                    confirmControls.classList.add('hide');
-                    showToast(`已儲存 ${capturedPhotos.length} 張照片`);
+                        // Reset for next photo
+                        descriptionInput.value = '';
+                        cameraView.classList.remove('hide');
+                        previewView.classList.add('hide');
+                        captureControls.classList.remove('hide');
+                        confirmControls.classList.add('hide');
+                        showToast(`已儲存 ${capturedPhotos.length} 張照片`);
+                    } catch (error) {
+                        console.error("Error saving photo:", error);
+                        showToast("照片儲存失敗，請重試", true);
+                    }
                 };
 
                 document.getElementById('add-another-btn').addEventListener('click', saveAndPrepareNext);
 
                 document.getElementById('finish-btn').addEventListener('click', async () => {
-                    saveAndPrepareNext(); // Save the current photo first
-                    stopCamera();
-                    showLoading(true);
-
                     try {
+                        // 先儲存當前照片
+                        saveAndPrepareNext();
+                        
+                        // 檢查是否有成功儲存的照片
+                        if (capturedPhotos.length === 0) {
+                            showToast("沒有可用的照片，請重新拍攝", true);
+                            return;
+                        }
+                        
+                        stopCamera();
+                        showLoading(true);
+
                         const photoUrls = [];
                         const descriptions = [];
 
                         for (const photo of capturedPhotos) {
+                            if (!photo.blob) {
+                                console.error("Invalid photo blob");
+                                continue;
+                            }
+                            
                             const uniqueFileName = `${Date.now()}-${state.currentUser.uid}.jpg`;
                             const imageRef = ref(storage, `clockInImages/${state.currentUser.uid}/${uniqueFileName}`);
                             const snapshot = await uploadBytes(imageRef, photo.blob);
                             const url = await getDownloadURL(snapshot.ref);
                             photoUrls.push(url);
-                            descriptions.push(photo.description);
+                            descriptions.push(photo.description || '');
+                        }
+                        
+                        if (photoUrls.length === 0) {
+                            throw new Error("無法上傳照片");
                         }
 
                         await addDoc(collection(db, "clockInRecords"), {
@@ -895,37 +933,55 @@
             }
 
             function applyWatermark(canvas, location, description) {
-                const context = canvas.getContext('2d');
-                const now = new Date();
-                const dateTime = now.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const name = state.currentUserData.name;
-                const coords = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
-                
-                const lines = [dateTime, name, `GPS: ${coords}`];
-                if(description) lines.push(`說明: ${description}`);
+                try {
+                    const context = canvas.getContext('2d');
+                    const now = new Date();
+                    const dateTime = now.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const name = state.currentUserData?.name || '使用者';
+                    const coords = location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : '無位置資訊';
+                    
+                    const lines = [dateTime, name, `GPS: ${coords}`];
+                    if(description) lines.push(`說明: ${description}`);
 
-                context.font = '24px Arial';
-                context.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                const margin = 20;
-                let y = canvas.height - margin - (lines.length - 1) * 30;
+                    context.font = '24px Arial';
+                    context.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    const margin = 20;
+                    let y = canvas.height - margin - (lines.length - 1) * 30;
 
-                for (const line of lines) {
-                    context.fillText(line, margin, y);
-                    y += 30;
+                    for (const line of lines) {
+                        context.fillText(line, margin, y);
+                        y += 30;
+                    }
+                    
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    return dataURItoBlob(dataUrl);
+                } catch (error) {
+                    console.error("Error applying watermark:", error);
+                    return null;
                 }
-                
-                return dataURItoBlob(canvas.toDataURL('image/jpeg', 0.8));
             }
 
             function dataURItoBlob(dataURI) {
-                const byteString = atob(dataURI.split(',')[1]);
-                const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
-                const ab = new ArrayBuffer(byteString.length);
-                const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) {
-                    ia[i] = byteString.charCodeAt(i);
+                try {
+                    if (!dataURI || typeof dataURI !== 'string' || !dataURI.includes(',')) {
+                        console.error("Invalid dataURI format");
+                        return null;
+                    }
+                    
+                    const byteString = atob(dataURI.split(',')[1]);
+                    const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    
+                    return new Blob([ab], { type: mimeString });
+                } catch (error) {
+                    console.error("Error converting dataURI to Blob:", error);
+                    return null;
                 }
-                return new Blob([ab], { type: mimeString });
             }
 
             // --- Google Maps ---
@@ -1008,5 +1064,4 @@
         });
     </script>
 </body>
-
 </html>
