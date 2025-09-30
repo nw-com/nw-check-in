@@ -182,7 +182,7 @@
           appId: "1:1060821780559:web:2638d630526d54f1a5023a",
           measurementId: "G-61Q1QNNRD2"
         };
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtycJgfz8UsXWlji63DkXpA4kmyY";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
         // --- 🚨 設定結束 🚨 ---
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -497,10 +497,24 @@
                             recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">本日無打卡紀錄</p>`;
                             return;
                         }
+                        
+                        // 将查询结果转换为数组并按时间排序（从新到旧）
+                        const records = [];
                         querySnapshot.forEach(doc => {
-                            const record = { id: doc.id, ...doc.data() };
+                            records.push({ id: doc.id, ...doc.data() });
+                        });
+                        
+                        // 按时间从新到旧排序
+                        records.sort((a, b) => {
+                            const timeA = a.timestamp?.toDate?.() || new Date(0);
+                            const timeB = b.timestamp?.toDate?.() || new Date(0);
+                            return timeB - timeA; // 降序排列，最新的在前
+                        });
+                        
+                        // 渲染所有记录
+                        records.forEach(record => {
                             const card = document.createElement('div');
-                            card.className = 'bg-white p-3 rounded-lg shadow-sm border';
+                            card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
                             const statusColor = getStatusColor(record.type);
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
@@ -534,22 +548,24 @@
                     state.activeListeners.push(unsubscribe);
                     
                     // 添加地圖按鈕點擊事件
-                    document.querySelectorAll('.map-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const lat = parseFloat(e.currentTarget.dataset.lat);
-                            const lng = parseFloat(e.currentTarget.dataset.lng);
-                            openMapModal(lat, lng);
+                    setTimeout(() => {
+                        document.querySelectorAll('.map-btn').forEach(btn => {
+                            btn.addEventListener('click', (e) => {
+                                const lat = parseFloat(e.currentTarget.dataset.lat);
+                                const lng = parseFloat(e.currentTarget.dataset.lng);
+                                openMapModal(lat, lng);
+                            });
                         });
-                    });
-                    
-                    // 添加照片按鈕點擊事件
-                    document.querySelectorAll('.photo-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const photos = JSON.parse(e.currentTarget.dataset.photos);
-                            const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
-                            openPhotoModal(photos, descriptions);
+                        
+                        // 添加照片按鈕點擊事件
+                        document.querySelectorAll('.photo-btn').forEach(btn => {
+                            btn.addEventListener('click', (e) => {
+                                const photos = JSON.parse(e.currentTarget.dataset.photos);
+                                const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
+                                openPhotoModal(photos, descriptions);
+                            });
                         });
-                    });
+                    }, 500); // 延迟添加事件监听器，确保DOM元素已完全加载
                     
                     // 更新Lucide圖標
                     lucide.createIcons();
@@ -1088,20 +1104,6 @@
                             lastClockInTime: serverTimestamp()
                         });
 
-                        await addDoc(collection(db, "clockInRecords"), {
-                            userId: state.currentUser.uid,
-                            type: type,
-                            timestamp: serverTimestamp(),
-                            location: new GeoPoint(location.lat, location.lng),
-                            photoUrls: photoUrls,
-                            descriptions: descriptions,
-                        });
-
-                        await updateDoc(doc(db, "users", state.currentUser.uid), {
-                            status: type,
-                            lastClockInTime: serverTimestamp()
-                        });
-
                         showToast(`${type}打卡成功！`);
                         close();
                         showPage('clock-in');
@@ -1248,5 +1250,4 @@
         });
     </script>
 </body>
-
 </html>
