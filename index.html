@@ -182,7 +182,7 @@
           appId: "1:1060821780559:web:2638d630526d54f1a5023a",
           measurementId: "G-61Q1QNNRD2"
         };
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtycJgfz8UsXWlji63DkXpA4kmyY";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
         // --- 🚨 設定結束 🚨 ---
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -513,12 +513,11 @@
                                     </button>
                                 </div>
                                 <div class="mt-2 flex space-x-2 overflow-x-auto">
-                                    ${(record.photoUrls && record.photoUrls.length > 0) ? 
-                                        `<button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" data-photos='${JSON.stringify(record.photoUrls || [])}' data-descriptions='${JSON.stringify(record.descriptions || [])}'>
-                                            <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
-                                        </button>` : 
-                                        '<span class="text-gray-400 text-sm">無照片</span>'
-                                    }
+                                    <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                        data-photos='${JSON.stringify(record.photoUrls || [])}' 
+                                        data-descriptions='${JSON.stringify(record.descriptions || [])}'>
+                                        <i data-lucide="image"></i> 照片 (${record.photoUrls?.length || record.descriptions?.length || 0})
+                                    </button>
                                 </div>
                             `;
                             recordsListEl.appendChild(card);
@@ -919,11 +918,13 @@
 
                             <div class="flex-shrink-0 pt-4">
                                 <div id="capture-controls" class="flex items-center justify-between">
-                                    <button id="switch-camera-btn" class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center">
-                                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                                    <button id="switch-camera-btn" class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center">
+                                        <i data-lucide="refresh-cw" class="w-6 h-6"></i>
                                     </button>
-                                    <button id="capture-btn" class="w-16 h-16 bg-white rounded-full border-4 border-gray-500"></button>
-                                    <div class="w-10 h-10"></div><!-- 空白元素保持對稱 -->
+                                    <button id="capture-btn" class="w-20 h-20 bg-white rounded-full border-4 border-gray-500 flex items-center justify-center">
+                                        <i data-lucide="camera" class="w-10 h-10 text-gray-800"></i>
+                                    </button>
+                                    <div class="w-12 h-12"></div><!-- 空白元素保持對稱 -->
                                 </div>
                                 <div id="confirm-controls" class="hide grid grid-cols-2 gap-2">
                                     <button id="add-another-btn" class="py-3 bg-gray-600 rounded-lg">拍下一張</button>
@@ -1045,11 +1046,14 @@
                 document.getElementById('finish-btn').addEventListener('click', async () => {
                     try {
                         // 先儲存當前照片
-                        saveAndPrepareNext();
+                        const description = descriptionInput.value;
+                        if (description || photoPreview.src.includes('data:image')) {
+                            saveAndPrepareNext();
+                        }
                         
                         // 檢查是否有成功儲存的照片
                         if (capturedPhotos.length === 0) {
-                            showToast("沒有可用的照片，請重新拍攝", true);
+                            showToast("必須至少拍攝一張照片才能打卡", true);
                             return;
                         }
                         
@@ -1100,7 +1104,7 @@
 
                         showToast(`${type}打卡成功！`);
                         close();
-                        showPage('dashboard');
+                        showPage('clock-in');
                     } catch (error) {
                         console.error("Clock in error:", error);
                         showToast("打卡失敗，請稍後再試", true);
@@ -1244,5 +1248,4 @@
         });
     </script>
 </body>
-
 </html>
