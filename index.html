@@ -58,6 +58,12 @@
             transform: translate(-50%, -50%);
             z-index: 50;
         }
+        /* Ensure map canvas is visible */
+        .map-canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #e5e7eb; /* Gray background as a fallback */
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
@@ -65,11 +71,13 @@
     <!-- API Key Warning -->
     <div id="api-key-warning" class="hide fixed inset-0 bg-red-100 z-[9999] p-8 text-red-800 flex flex-col items-center justify-center text-center">
         <i data-lucide="alert-triangle" class="w-16 h-16 mb-4"></i>
-        <h2 class="text-2xl font-bold mb-2">設定錯誤</h2>
+        <h2 class="text-2xl font-bold mb-2">請完成最後的設定步驟</h2>
         <p class="max-w-md">
-            系統偵測到您尚未設定 Firebase 或 Google Maps 的 API 金鑰。請打開 <code>index.html</code> 檔案，找到最下方的 <code>&lt;script type="module"&gt;</code> 區塊，並填入您自己的金鑰。
+            系統偵測到您尚未設定 Firebase 或 Google Maps 的 API 金鑰。
             <br><br>
-            詳細步驟請參考 <code>README.md</code> 檔案。
+            <strong class="text-red-900">這不是程式錯誤，而是必要的設定。</strong> 基於安全考量，我無法為您產生金鑰，您必須親自完成此設定。
+            <br><br>
+            請打開 <code>index.html</code> 檔案，找到最下方的 <code>&lt;script type="module"&gt;</code> 區塊，並依照註解指示填入您自己的金鑰。詳細步驟請參考 <code>README.md</code> 檔案。
         </p>
     </div>
 
@@ -139,23 +147,33 @@
     </div>
     
     <!-- Modal Container -->
-    <div id="modal-container" class="hide"></div>
+    <div id="modal-container"></div>
 
 
     <script type="module">
-        // --- 🚨 請在這裡填入您的 Firebase 和 Google Maps 設定 🚨 ---
-        // 請根據 README.md 檔案的指示，填入您自己的 Firebase 專案設定和 Google Maps API 金鑰。
+        // --- 🚨 重要設定：請在此填入您自己的 API 金鑰 🚨 ---
+        //
+        // 您看到的錯誤訊息 "Error: API Keys are not configured" 是正常的提醒，並非程式 bug。
+        // 這個應用程式需要連接到 Google Firebase 和 Google Maps 服務才能運作。
+        // 您必須親自前往這兩個服務的官方網站，建立您自己的專案並取得金鑰。
+        //
+        // 1. 前往 Firebase 官方網站建立專案，在專案設定中取得您的 `firebaseConfig` 物件。
+        // 2. 前往 Google Cloud Platform 建立專案，啟用 "Maps JavaScript API" 並取得您的 API 金鑰。
+        // 3. 將下方 "YOUR_..." 的部分，完整替換成您自己的金鑰和設定資訊。
+        //
+        // 如果不執行此步驟，應用程式將無法啟動。詳細教學請參考 README.md 檔案。
+        //
         const firebaseConfig = {
-  apiKey: "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg",
-  authDomain: "nw-check-in.firebaseapp.com",
-  projectId: "nw-check-in",
-  storageBucket: "nw-check-in.firebasestorage.app",
-  messagingSenderId: "1060821780559",
-  appId: "1:1060821780559:web:2638d630526d54f1a5023a",
-  measurementId: "G-61Q1QNNRD2"
-};
+          apiKey: "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg",
+          authDomain: "nw-check-in.firebaseapp.com",
+          projectId: "nw-check-in",
+          storageBucket: "nw-check-in.appspot.com",
+          messagingSenderId: "1060821780559",
+          appId: "1:1060821780559:web:2638d630526d54f1a5023a",
+          measurementId: "G-61Q1QNNRD2"
+        };
 
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg"; // <-- 替換這裡
         // --- 🚨 設定結束 🚨 ---
 
         // --- Configuration Check ---
@@ -163,20 +181,15 @@
             document.getElementById('api-key-warning').classList.remove('hide');
             document.getElementById('loading-screen').classList.add('hide');
             lucide.createIcons();
-            // Stop further script execution
+            // This error is intentional to stop execution if keys aren't set.
             throw new Error("API Keys are not configured. Please edit index.html");
         }
 
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { 
-            getAuth, 
-            signInWithEmailAndPassword, 
-            onAuthStateChanged, 
-            signOut,
-            createUserWithEmailAndPassword,
-            updatePassword,
-            reauthenticateWithCredential,
+            getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+            createUserWithEmailAndPassword, updatePassword, reauthenticateWithCredential,
             EmailAuthProvider
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { 
@@ -197,15 +210,14 @@
         let currentUser = null;
         let currentUserData = null;
         let googleMapsLoaded = false;
-        let currentMap = null;
-        let currentMarker = null;
-        let activeListeners = []; // To store unsubscribe functions for Firestore listeners
+        let activeListeners = []; // To store unsubscribe functions
 
         // Page and Element References
         const loadingScreen = document.getElementById('loading-screen');
         const loginPage = document.getElementById('login-page');
         const appContainer = document.getElementById('app-container');
         const mainContent = document.getElementById('main-content');
+        const mainNav = document.getElementById('main-nav');
         const profileAvatarBtn = document.getElementById('profile-avatar-btn');
         const modalContainer = document.getElementById('modal-container');
 
@@ -218,28 +230,24 @@
             const password = document.getElementById('password').value;
             const loginError = document.getElementById('login-error');
             loginError.textContent = '';
-
             try {
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (error) {
-                console.error("Login failed:", error);
-                loginError.textContent = '登入失敗，請檢查您的帳號密碼。';
+                loginError.textContent = '登入失敗，請檢查帳號密碼。';
             } finally {
                 showLoading(false);
             }
         });
         
-        onAuthStateChanged(auth, async (user) => {
-            cleanupListeners(); // Clean up old listeners on auth state change
+        onAuthStateChanged(auth, (user) => {
+            cleanupListeners();
             if (user) {
                 currentUser = user;
                 const userDocRef = doc(db, "users", user.uid);
-                
                 const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const wasNotInitialized = !currentUserData;
                         currentUserData = { id: user.uid, ...docSnap.data() };
-                        
                         if (wasNotInitialized) {
                             initializeAppUI();
                             loginPage.classList.add('hide');
@@ -249,12 +257,10 @@
                             updateHeaderAvatar();
                         }
                     } else {
-                        console.error("User document not found in Firestore!");
                         signOut(auth);
                     }
                 });
                 activeListeners.push(unsubscribe);
-
             } else {
                 currentUser = null;
                 currentUserData = null;
@@ -268,7 +274,6 @@
         function initializeAppUI() {
             loadGoogleMapsScript();
             updateHeaderAvatar();
-
             const navTracking = document.getElementById('nav-tracking');
             const navSettings = document.getElementById('nav-settings');
             if (currentUserData.role !== 'admin') {
@@ -278,7 +283,6 @@
                 navTracking.classList.remove('hide');
                 navSettings.classList.remove('hide');
             }
-            
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
             showPage('dashboard');
@@ -296,31 +300,27 @@
         mainNav.addEventListener('click', (e) => {
             const tabButton = e.target.closest('.tab-btn');
             if (tabButton && !tabButton.classList.contains('active')) {
-                const tabName = tabButton.dataset.tab;
-                showPage(tabName);
+                showPage(tabButton.dataset.tab);
                 document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
                 tabButton.classList.add('active');
             }
         });
 
         profileAvatarBtn.addEventListener('click', () => {
-             // Implementation for showing profile modal
+            // Will be implemented later
         });
 
         function showPage(pageName, subPage = null, params = {}) {
             cleanupListeners();
-            mainContent.innerHTML = '<div class="flex justify-center items-center h-full"><div class="loader"></div></div>';
-
+            mainContent.innerHTML = `<div class="flex justify-center items-center h-full"><div class="loader"></div></div>`;
             const router = {
                 'dashboard': renderDashboard,
                 'clock-in': () => renderClockIn(subPage || 'location'),
                 'tracking': () => currentUserData.role === 'admin' ? renderTracking(subPage || 'locate') : renderAccessDenied(),
                 'settings': () => currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
             };
-            
             const renderFunction = router[pageName] || renderAccessDenied;
             renderFunction(params);
-            
             lucide.createIcons();
         }
 
@@ -332,10 +332,11 @@
                     <p>您沒有權限訪問此頁面。</p>
                 </div>
             `;
+            lucide.createIcons();
         }
-        
-        // --- Page Render Functions ---
 
+        // --- Page Render Functions ---
+        
         function renderDashboard() {
             mainContent.innerHTML = `
                 <div class="h-[50px] flex items-center justify-center border-b border-gray-200 bg-white">
@@ -355,56 +356,37 @@
                 </div>
             `;
             lucide.createIcons();
-
             const timeEl = document.getElementById('current-time');
             const timerInterval = setInterval(() => {
-                const now = new Date();
-                if(timeEl){
-                    timeEl.textContent = now.toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium' });
-                }
+                if(timeEl){ timeEl.textContent = new Date().toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium' }); }
             }, 1000);
             activeListeners.push(() => clearInterval(timerInterval));
-
             const usersRef = collection(db, "users");
             const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
                 const allUsersStatusEl = document.getElementById('all-users-status');
                 if(!allUsersStatusEl) return;
-                
                 allUsersStatusEl.innerHTML = '';
                 let myStatusFound = false;
-                
                 const users = [];
                 querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
-                
                 users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
                     const statusText = user.status || '未打卡';
                     const statusColor = getStatusColor(statusText);
-
                     if (user.id === currentUser.uid) {
                         myStatusFound = true;
                         document.getElementById('my-status').innerHTML = `
                           <div class="flex items-center justify-between">
                             <span class="font-semibold text-lg ${statusColor}">${statusText}</span>
-                            <span class="text-sm text-gray-500">${user.lastClockInTime ? '上次更新: ' + new Date(user.lastClockInTime.toDate()).toLocaleTimeString('zh-TW') : ''}</span>
-                          </div>
-                        `;
+                            <span class="text-sm text-gray-500">${user.lastClockInTime ? '上次: ' + new Date(user.lastClockInTime.toDate()).toLocaleTimeString('zh-TW') : ''}</span>
+                          </div>`;
                     }
-                    
-                    const userStatusHTML = `
+                    allUsersStatusEl.innerHTML += `
                         <div class="flex items-center justify-between bg-white p-3 rounded-md shadow-sm border">
-                            <div class="flex items-center">
-                                <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
-                                <span class="font-medium text-gray-700">${user.name}</span>
-                            </div>
+                            <div class="flex items-center"><img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover"><span class="font-medium text-gray-700">${user.name}</span></div>
                             <span class="text-sm font-semibold ${statusColor}">${statusText}</span>
-                        </div>
-                    `;
-                    allUsersStatusEl.innerHTML += userStatusHTML;
+                        </div>`;
                 });
-
-                if(!myStatusFound && document.getElementById('my-status')){
-                    document.getElementById('my-status').textContent = '無法取得您的狀態';
-                }
+                if(!myStatusFound && document.getElementById('my-status')){ document.getElementById('my-status').textContent = '無法取得您的狀態'; }
             });
             activeListeners.push(unsubscribe);
         }
@@ -415,20 +397,65 @@
                     <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位打卡</button>
                     <button data-subtab="records" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">打卡紀錄</button>
                 </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>
-            `;
+                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
             
             const subPageContent = document.getElementById('sub-page-content');
             if (subPage === 'location') {
-                 subPageContent.innerHTML = `<!-- Location clock-in UI will go here -->`;
-                 // Implementation for location clock-in
+                subPageContent.innerHTML = `
+                    <div class="p-4 h-full flex flex-col">
+                        <button id="relocate-btn" class="w-full bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-50 flex items-center justify-center mb-4">
+                            <i data-lucide="locate-fixed" class="w-4 h-4 mr-2"></i>重新定位
+                        </button>
+                        <div id="map-container" class="flex-grow rounded-lg overflow-hidden border border-gray-300 relative">
+                             <div id="map" class="map-canvas"></div>
+                             <div id="map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-4">
+                            <button data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
+                            <button data-type="下班" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-gray-600">下班打卡</button>
+                            <button data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
+                            <button data-type="返回" class="clock-in-btn bg-teal-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
+                        </div>
+                    </div>`;
+                lucide.createIcons();
+                initClockInMap();
+                document.getElementById('relocate-btn').addEventListener('click', initClockInMap);
+                document.querySelectorAll('.clock-in-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const type = e.target.dataset.type;
+                        // Trigger camera modal, then save record
+                        alert(`觸發 ${type} 打卡流程 (功能待實現)`);
+                    });
+                });
             } else if (subPage === 'records') {
-                 subPageContent.innerHTML = `<!-- Clock-in records UI will go here -->`;
-                 // Implementation for clock-in records
+                subPageContent.innerHTML = `<div class="p-4"><p>打卡紀錄功能待實現</p></div>`;
             }
+            mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderClockIn(btn.dataset.subtab)));
+        }
 
-            mainContent.querySelector('.sub-tab-btn[data-subtab="location"]').addEventListener('click', () => renderClockIn('location'));
-            mainContent.querySelector('.sub-tab-btn[data-subtab="records"]').addEventListener('click', () => renderClockIn('records'));
+        async function initClockInMap() {
+            if (!googleMapsLoaded) {
+                setTimeout(initClockInMap, 200);
+                return;
+            }
+            const mapLoader = document.getElementById('map-loader');
+            const mapDiv = document.getElementById('map');
+            if(!mapDiv || !mapLoader) return;
+            mapLoader.classList.remove('hide');
+
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+                });
+                const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                const map = new google.maps.Map(mapDiv, { center: coords, zoom: 17, disableDefaultUI: true });
+                new google.maps.Marker({ position: coords, map: map });
+                mapLoader.classList.add('hide');
+            } catch (error) {
+                console.error("Error getting location:", error);
+                mapDiv.innerHTML = `<div class="p-4 text-center text-red-500">無法取得您的位置。請確認已開啟定位服務。</div>`;
+                mapLoader.classList.add('hide');
+            }
         }
 
         function renderTracking(subPage) {
@@ -438,12 +465,8 @@
                     <button data-subtab="contact" class="sub-tab-btn px-3 py-2 rounded-md font-medium text-gray-600 ${subPage === 'contact' ? 'active' : ''}">聯繫員工</button>
                     <button data-subtab="records" class="sub-tab-btn px-3 py-2 rounded-md font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">員工紀錄</button>
                 </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>
-            `;
-            // Add sub-page logic here...
-            mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => {
-                btn.addEventListener('click', () => renderTracking(btn.dataset.subtab));
-            });
+                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"><div class="p-4"><p>功能待實現</p></div></div>`;
+            mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderTracking(btn.dataset.subtab)));
         }
 
         function renderSettings(subPage) {
@@ -452,25 +475,18 @@
                     <button data-subtab="accounts" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'accounts' ? 'active' : ''}">帳號列表</button>
                     <button data-subtab="rules" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'rules' ? 'active' : ''}">計點規則</button>
                 </div>
-                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>
-            `;
-            // Add sub-page logic here...
-             mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => {
-                btn.addEventListener('click', () => renderSettings(btn.dataset.subtab));
-            });
+                <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"><div class="p-4"><p>功能待實現</p></div></div>`;
+             mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => renderSettings(btn.dataset.subtab)));
         }
 
         // --- Google Maps ---
         function loadGoogleMapsScript() {
             if (window.google || googleMapsLoaded) return;
-            googleMapsLoaded = true; // Prevent multiple loads
+            googleMapsLoaded = true;
             const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&libraries=places&v=weekly`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
             script.async = true;
-            script.defer = true;
-            window.initMap = () => {
-                console.log("Google Maps API loaded.");
-            };
+            window.initMap = () => console.log("Google Maps API loaded.");
             document.head.appendChild(script);
         }
         
@@ -485,21 +501,15 @@
         }
 
         function getStatusColor(status) {
-            switch(status) {
-                case '上班': return 'text-green-600';
-                case '下班': return 'text-gray-500';
-                case '外出': return 'text-blue-600';
-                case '返回': return 'text-teal-600';
-                default: return 'text-yellow-600';
-            }
+            const colors = {'上班': 'text-green-600', '下班': 'text-gray-500', '外出': 'text-blue-600', '返回': 'text-teal-600'};
+            return colors[status] || 'text-yellow-600';
         }
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
              lucide.createIcons();
-             showLoading(true); // Show loader until auth state is determined
+             showLoading(true);
         });
-
     </script>
 </body>
 </html>
