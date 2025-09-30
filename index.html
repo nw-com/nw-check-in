@@ -639,8 +639,10 @@
                         showLoading(true);
                         let avatarUrl = user?.avatarUrl || null;
                         const avatarFile = document.getElementById('avatar-upload').files[0];
+                        
                         if (avatarFile) {
-                            const imageRef = ref(storage, `avatars/${isNew ? Date.now() : user.id}/${avatarFile.name}`);
+                            const uniqueFileName = `${Date.now()}-${avatarFile.name}`;
+                            const imageRef = ref(storage, `avatars/${isNew ? email : user.id}/${uniqueFileName}`);
                             const snapshot = await uploadBytes(imageRef, avatarFile);
                             avatarUrl = await getDownloadURL(snapshot.ref);
                         }
@@ -648,6 +650,7 @@
                         const userData = { name, email, phone, lineId, role, avatarUrl, points: user?.points || 100 };
                         
                         if (isNew) {
+                           // This approach has limitations. See README for more info.
                            const newUserRef = doc(collection(db, "users"));
                            await setDoc(newUserRef, userData);
                            showToast("帳號資料建立成功！請至 Firebase 後台手動建立對應的驗證使用者。");
@@ -659,8 +662,18 @@
                         showPage('settings', 'accounts');
                     } catch (error) {
                         console.error("Error saving user:", error);
-                        showToast("儲存失敗", true);
-                        errorEl.textContent = error.message;
+                        let errorMessage = "儲存失敗";
+                        if (error.code) {
+                            switch (error.code) {
+                                case 'storage/unauthorized':
+                                    errorMessage = "儲存失敗：沒有權限上傳檔案。";
+                                    break;
+                                default:
+                                    errorMessage = `儲存失敗：${error.code}`;
+                            }
+                        }
+                        showToast(errorMessage, true);
+                        errorEl.textContent = errorMessage;
                     } finally {
                         showLoading(false);
                     }
@@ -784,19 +797,17 @@
                     errorEl.textContent = '';
                     
                     try {
-                        // Update avatar if changed
                         let avatarUrl = state.currentUserData.avatarUrl;
                         const avatarFile = document.getElementById('profile-avatar-upload').files[0];
                         if (avatarFile) {
-                            const imageRef = ref(storage, `avatars/${state.currentUser.uid}/${avatarFile.name}`);
+                            const uniqueFileName = `${Date.now()}-${avatarFile.name}`;
+                            const imageRef = ref(storage, `avatars/${state.currentUser.uid}/${uniqueFileName}`);
                             const snapshot = await uploadBytes(imageRef, avatarFile);
                             avatarUrl = await getDownloadURL(snapshot.ref);
                         }
 
-                        // Update Firestore document
                         await updateDoc(doc(db, "users", state.currentUser.uid), { name, avatarUrl });
 
-                        // Update password if fields are filled
                         if (currentPassword && newPassword) {
                             if (newPassword.length < 6) {
                                 throw new Error("新密碼長度至少需要6位數");
@@ -812,8 +823,16 @@
                         close();
                     } catch (error) {
                         console.error("Profile update error:", error);
-                        errorEl.textContent = error.message.includes('wrong-password') ? '目前密碼錯誤' : error.message;
-                        showToast("更新失敗", true);
+                        let errorMessage = "更新失敗";
+                         if (error.message.includes('wrong-password')) {
+                            errorMessage = "目前密碼錯誤";
+                         } else if (error.code && error.code.includes('storage/unauthorized')) {
+                            errorMessage = "更新失敗：沒有權限上傳檔案。";
+                         } else {
+                            errorMessage = error.message;
+                         }
+                        errorEl.textContent = errorMessage;
+                        showToast(errorMessage, true);
                     } finally {
                         showLoading(false);
                     }
