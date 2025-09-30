@@ -484,6 +484,8 @@
                     const recordsRef = collection(db, "clockInRecords");
                     const q = query(recordsRef, 
                         where("userId", "==", state.currentUser.uid),
+                        where("timestamp", ">=", startOfDay),
+                        where("timestamp", "<=", endOfDay),
                         orderBy("timestamp", "desc")
                     );
 
@@ -1074,26 +1076,17 @@
                         stopCamera();
                         showLoading(true);
 
-                        console.log("開始處理照片並儲存打卡記錄");
+                        // 由於CORS限制，我們將直接儲存打卡記錄，不上傳照片
+                        // 這是一個臨時解決方案，實際應用中應配置Firebase Storage的CORS設定
+                        console.log("跳過照片上傳，直接儲存打卡記錄");
                         
                         const photoUrls = [];
                         const descriptions = [];
                         
-                        // 將照片轉換為 Data URL 並保存
+                        // 將照片描述保存下來，但不上傳照片
                         for (const photo of capturedPhotos) {
-                            // 將 Blob 轉換為 Data URL
-                            const reader = new FileReader();
-                            const dataUrl = await new Promise(resolve => {
-                                reader.onloadend = () => resolve(reader.result);
-                                reader.readAsDataURL(photo.blob);
-                            });
-                            
-                            // 保存照片 URL 和描述
-                            photoUrls.push(dataUrl);
                             if (photo.description) {
                                 descriptions.push(photo.description);
-                            } else {
-                                descriptions.push("");  // 確保描述和照片數量一致
                             }
                         }
 
