@@ -114,12 +114,23 @@
         </div>
         <form id="login-form">
             <div class="mb-4">
-                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+                 <div class="flex justify-between items-center mb-1">
+                    <label for="email" class="block text-sm font-medium text-gray-700">電子郵件</label>
+                    <div class="flex items-center">
+                        <input id="remember-me" type="checkbox" class="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded">
+                        <label for="remember-me" class="ml-2 block text-sm text-gray-700">記住我</label>
+                    </div>
+                </div>
                 <input type="email" id="email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500" required>
             </div>
             <div class="mb-6">
                 <label for="password" class="block text-sm font-medium text-gray-700 mb-1">密碼</label>
-                <input type="password" id="password" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500" required>
+                <div class="relative">
+                    <input type="password" id="password" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 pr-10" required>
+                    <button type="button" id="toggle-password" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">
+                        <i id="password-icon" data-lucide="eye-off" class="w-5 h-5"></i>
+                    </button>
+                </div>
             </div>
             <button type="submit" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition duration-150">
                 登入
@@ -135,6 +146,7 @@
             <div class="flex items-center space-x-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
                 <span class="text-lg font-bold text-gray-800">西北勤務打卡系統</span>
+                <span id="welcome-message" class="text-sm text-gray-600 ml-2"></span>
             </div>
             <button id="profile-avatar-btn">
                 <img id="header-avatar" src="https://placehold.co/40x40/EFEFEF/333333?text=U" alt="User Avatar" class="w-10 h-10 rounded-full object-cover">
@@ -231,15 +243,49 @@
             const toast = document.getElementById('toast');
             const loginForm = document.getElementById('login-form');
             const bodyEl = document.body;
+            
+            // Login page specific elements
+            const rememberMeCheckbox = document.getElementById('remember-me');
+            const emailInput = document.getElementById('email');
+            const togglePasswordBtn = document.getElementById('toggle-password');
+            const passwordInput = document.getElementById('password');
+
+            // Remember me logic
+            const savedEmail = localStorage.getItem('rememberedEmail');
+            if (savedEmail) {
+                emailInput.value = savedEmail;
+                rememberMeCheckbox.checked = true;
+            }
+            
+            // Password visibility toggle
+            togglePasswordBtn.addEventListener('click', () => {
+                const passwordIcon = document.getElementById('password-icon');
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    passwordIcon.outerHTML = '<i id="password-icon" data-lucide="eye" class="w-5 h-5"></i>';
+                } else {
+                    passwordInput.type = 'password';
+                    passwordIcon.outerHTML = '<i id="password-icon" data-lucide="eye-off" class="w-5 h-5"></i>';
+                }
+                lucide.createIcons();
+            });
+
 
             // --- Authentication Logic ---
             loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 showLoading(true);
-                const email = document.getElementById('email').value;
-                const password = document.getElementById('password').value;
+                const email = emailInput.value;
+                const password = passwordInput.value;
                 const loginError = document.getElementById('login-error');
                 loginError.textContent = '';
+
+                if (rememberMeCheckbox.checked) {
+                    localStorage.setItem('rememberedEmail', email);
+                } else {
+                    localStorage.removeItem('rememberedEmail');
+                }
+
                 try {
                     await signInWithEmailAndPassword(auth, email, password);
                 } catch (error) {
@@ -315,6 +361,10 @@
                     headerAvatar.src = state.currentUserData.avatarUrl;
                 } else {
                     headerAvatar.src = `https://placehold.co/40x40/EFEFEF/333333?text=${state.currentUserData?.name?.charAt(0) || 'U'}`;
+                }
+                const welcomeMessage = document.getElementById('welcome-message');
+                if(welcomeMessage) {
+                    welcomeMessage.textContent = `歡迎, ${state.currentUserData.name}`;
                 }
             }
 
@@ -906,7 +956,119 @@
             }
 
             function renderProfileModal() {
-                // ... Implementation is correct from previous version
+                const modalId = `profile-modal-${Date.now()}`;
+                const close = () => document.getElementById(modalId)?.remove();
+
+                const modalHTML = `
+                    <div id="${modalId}" class="modal-backdrop">
+                        <div class="modal-content w-[90%] max-w-md bg-white rounded-lg shadow-xl flex flex-col">
+                            <div class="flex justify-between items-center p-4 border-b">
+                                <h3 class="font-bold text-lg">個人資料</h3>
+                                <button class="close-btn text-gray-500 hover:text-gray-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+                            </div>
+
+                            <div class="p-4 space-y-4 overflow-y-auto">
+                                <!-- Avatar section -->
+                                <div class="flex flex-col items-center space-y-2">
+                                    <img id="modal-avatar" src="${state.currentUserData.avatarUrl || `https://placehold.co/80x80/EFEFEF/333333?text=${state.currentUserData.name.charAt(0)}`}" alt="Avatar" class="w-20 h-20 rounded-full object-cover">
+                                    <input type="file" id="avatar-upload" class="hidden" accept="image/*">
+                                    <button id="change-avatar-btn" class="text-sm text-red-600 hover:underline">更換頭像</button>
+                                </div>
+
+                                <!-- Info -->
+                                <div class="text-center">
+                                    <p class="font-bold text-xl">${state.currentUserData.name}</p>
+                                    <p class="text-gray-500">${state.currentUserData.email}</p>
+                                </div>
+
+                                <!-- Change Password -->
+                                <div>
+                                    <h4 class="font-semibold mb-2 border-t pt-4">變更密碼</h4>
+                                    <form id="change-password-form" class="space-y-3">
+                                        <input type="password" id="current-password" placeholder="目前密碼" class="w-full px-3 py-2 border rounded-md" required>
+                                        <input type="password" id="new-password" placeholder="新密碼" class="w-full px-3 py-2 border rounded-md" required>
+                                        <input type="password" id="confirm-password" placeholder="確認新密碼" class="w-full px-3 py-2 border rounded-md" required>
+                                        <button type="submit" class="w-full bg-red-600 text-white py-2 rounded-md hover:bg-red-700">更新密碼</button>
+                                        <p id="password-change-error" class="text-red-500 text-sm text-center"></p>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <div class="p-4 border-t">
+                                <button id="logout-btn" class="w-full bg-gray-200 text-gray-700 py-2 rounded-md hover:bg-gray-300">登出</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                modalContainer.innerHTML = modalHTML;
+                lucide.createIcons();
+
+                const modal = document.getElementById(modalId);
+                const avatarUploadInput = document.getElementById('avatar-upload');
+                const changePasswordForm = document.getElementById('change-password-form');
+                const logoutBtn = document.getElementById('logout-btn');
+
+                modal.querySelector('.close-btn').addEventListener('click', close);
+                document.getElementById('change-avatar-btn').addEventListener('click', () => avatarUploadInput.click());
+
+                avatarUploadInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    showLoading(true);
+                    try {
+                        const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${file.name}`);
+                        await uploadBytes(storageRef, file);
+                        const downloadURL = await getDownloadURL(storageRef);
+                        await updateDoc(doc(db, "users", state.currentUser.uid), { avatarUrl: downloadURL });
+                        document.getElementById('modal-avatar').src = downloadURL; // Update modal avatar
+                        showToast("頭像更新成功");
+                    } catch (error) {
+                        console.error("Avatar upload error:", error);
+                        showToast("頭像上傳失敗", true);
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+
+                changePasswordForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const currentPassword = document.getElementById('current-password').value;
+                    const newPassword = document.getElementById('new-password').value;
+                    const confirmPassword = document.getElementById('confirm-password').value;
+                    const errorEl = document.getElementById('password-change-error');
+                    errorEl.textContent = '';
+
+                    if (newPassword !== confirmPassword) {
+                        errorEl.textContent = "新密碼不相符。";
+                        return;
+                    }
+                    if (newPassword.length < 6) {
+                        errorEl.textContent = "密碼長度至少需要6個字元。";
+                        return;
+                    }
+
+                    showLoading(true);
+                    try {
+                        const credential = EmailAuthProvider.credential(state.currentUser.email, currentPassword);
+                        await reauthenticateWithCredential(state.currentUser, credential);
+                        await updatePassword(state.currentUser, newPassword);
+                        showToast("密碼更新成功");
+                        close();
+                    } catch (error) {
+                        console.error("Password change error:", error);
+                        errorEl.textContent = "密碼變更失敗，請確認目前密碼是否正確。";
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+
+                logoutBtn.addEventListener('click', async () => {
+                    close();
+                    await signOut(auth);
+                    showToast("您已成功登出");
+                });
             }
             
             function openCameraModal(type, location) {
