@@ -110,7 +110,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.2.5</p>
+            <p class="text-gray-500">雲端測試版V1.2.6</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -537,17 +537,18 @@
                     const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
                     
                     const recordsRef = collection(db, "clockInRecords");
+                    // Firestore's orderBy can be tricky with composite indexes. 
+                    // A more robust way is to fetch and then sort on the client.
                     const q = query(recordsRef, 
                         where("userId", "==", state.currentUser.uid),
                         where("timestamp", ">=", startOfDay),
-                        where("timestamp", "<=", endOfDay),
-                        orderBy("timestamp", "desc")
+                        where("timestamp", "<=", endOfDay)
                     );
 
                     const unsubscribe = onSnapshot(q, (querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
                         if (!recordsListEl) return;
-                        recordsListEl.innerHTML = '';
+                        
                         if (querySnapshot.empty) {
                             recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">本日無打卡紀錄</p>`;
                             return;
@@ -558,12 +559,14 @@
                             records.push({ id: doc.id, ...doc.data() });
                         });
                         
+                        // Sort records by timestamp descending (newest first) on the client side
                         records.sort((a, b) => {
                             const timeA = a.timestamp?.toDate?.() || new Date(0);
                             const timeB = b.timestamp?.toDate?.() || new Date(0);
                             return timeB - timeA;
                         });
                         
+                        recordsListEl.innerHTML = ''; // Clear previous content
                         records.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
@@ -613,7 +616,7 @@
                         if (recordsListEl) {
                             let errorMessage = '讀取紀錄失敗。';
                             if (error.code === 'failed-precondition') {
-                                errorMessage += '<br>缺少資料庫索引，請依照指示建立。';
+                                errorMessage += '<br>缺少資料庫索引，請依照前一則訊息的指示建立索引。';
                             }
                             recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">${errorMessage}</div>`;
                         }
