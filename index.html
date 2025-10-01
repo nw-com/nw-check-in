@@ -110,7 +110,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.2.9</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -586,7 +586,7 @@
                                     <button class="photo-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
                                         data-photos='${JSON.stringify(record.photoUrls || [])}' 
                                         data-descriptions='${JSON.stringify(record.descriptions || [])}'>
-                                        <i data-lucide="image"></i> 照片 (${record.descriptions?.length || 0})
+                                        <i data-lucide="image"></i> 照片 (${(record.photoUrls?.length || 0)})
                                     </button>
                                 </div>
                             `;
@@ -712,7 +712,8 @@
                     center: defaultCenter,
                     zoom: 12,
                     disableDefaultUI: true,
-                    zoomControl: true
+                    zoomControl: true,
+                    mapId: 'DEMO_MAP_ID' // Required for Advanced Markers
                 });
 
                 mapLoader.classList.add('hide');
@@ -782,13 +783,13 @@
                             });
 
                             marker.addListener('click', () => {
-                                infoWindow.open(state.trackingMap, marker);
+                                infoWindow.open({ anchor: marker, map: state.trackingMap });
                             });
                             
                             userElement.addEventListener('click', () => {
                                 state.trackingMap.panTo(position);
                                 state.trackingMap.setZoom(17);
-                                infoWindow.open(state.trackingMap, marker);
+                                infoWindow.open({ anchor: marker, map: state.trackingMap });
                             });
 
                             state.trackingMarkers.push(marker);
@@ -995,16 +996,16 @@
             function openPhotoModal(photos, descriptions) {
                 const modalId = `photo-modal-${Date.now()}`;
                 
-                let photosHTML = '';
-                if (descriptions && descriptions.length > 0) {
-                    photosHTML = descriptions.map((desc, index) => `
+                let contentHTML;
+                if (photos && photos.length > 0) {
+                    contentHTML = photos.map((url, index) => `
                         <div class="photo-slide">
-                            <img src="${photos[index] || 'https://via.placeholder.com/400x300?text=無照片'}" class="max-h-[400px] max-w-full object-contain mx-auto" onerror="this.src='https://via.placeholder.com/400x300?text=照片載入失敗'">
-                            <p class="text-center mt-2 text-gray-600">${desc || ''}</p>
+                            <img src="${url}" class="max-h-[400px] max-w-full object-contain mx-auto" onerror="this.src='https://via.placeholder.com/400x300?text=照片載入失敗'">
+                            <p class="text-center mt-2 text-gray-600">${descriptions[index] || ''}</p>
                         </div>
                     `).join('');
                 } else {
-                    photosHTML = '<div class="p-4 text-center text-gray-500">無照片或說明</div>';
+                    contentHTML = '<div class="p-4 text-center text-gray-500">無照片</div>';
                 }
                 
                 const modalHTML = `
@@ -1017,9 +1018,9 @@
                                 </button>
                             </div>
                             <div class="p-4 photo-container">
-                                ${photosHTML}
+                                ${contentHTML}
                             </div>
-                            ${(descriptions?.length || 0) > 1 ? `
+                            ${(photos?.length || 0) > 1 ? `
                             <div class="flex justify-center p-2 gap-2">
                                 <button class="prev-btn bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded">上一張</button>
                                 <button class="next-btn bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded">下一張</button>
@@ -1037,7 +1038,7 @@
                     modal.remove();
                 });
                 
-                if ((descriptions?.length || 0) > 1) {
+                if ((photos?.length || 0) > 1) {
                     const slides = modal.querySelectorAll('.photo-slide');
                     let currentSlide = 0;
                     
@@ -1622,47 +1623,47 @@
 
                 document.getElementById('add-another-btn').addEventListener('click', saveAndPrepareNext);
 
-                document.getElementById('finish-btn').addEventListener('click', async () => {
+                document.getElementById('finish-btn').addEventListener('click', () => {
                     if (previewView.classList.contains('hide') === false) {
-                         canvas.toBlob(async (blob) => {
+                         canvas.toBlob((blob) => {
                             if (blob) {
                                 const description = descriptionInput.value;
                                 capturedPhotos.push({ blob, description });
                             }
-                            await completeClockIn();
+                            completeClockIn();
                          }, 'image/jpeg', 0.8);
                     } else {
-                        await completeClockIn();
+                        completeClockIn();
                     }
                 });
 
                 const completeClockIn = async () => {
-                     if (capturedPhotos.length === 0) {
-                        showToast("必須至少拍攝一張照片才能打卡", true);
+                    if (capturedPhotos.length === 0) {
+                        showToast("請至少拍攝一張照片", true);
                         return;
                     }
                     stopCamera();
                     showLoading(true);
 
-                    const photoUrls = [];
-                    const descriptions = [];
-
-                    for (const photo of capturedPhotos) {
-                         const storageRef = ref(storage, `clockInPhotos/${state.currentUser.uid}/${Date.now()}.jpg`);
-                         await uploadBytes(storageRef, photo.blob);
-                         const downloadURL = await getDownloadURL(storageRef);
-                         photoUrls.push(downloadURL);
-                         descriptions.push(photo.description);
-                    }
-
                     try {
+                        const uploadPromises = capturedPhotos.map(async (photo) => {
+                            const storageRef = ref(storage, `clockInPhotos/${state.currentUser.uid}/${Date.now()}_${Math.random()}.jpg`);
+                            await uploadBytes(storageRef, photo.blob);
+                            const downloadURL = await getDownloadURL(storageRef);
+                            return { url: downloadURL, description: photo.description };
+                        });
+
+                        const uploadedPhotos = await Promise.all(uploadPromises);
+                        const photoUrls = uploadedPhotos.map(p => p.url);
+                        const descriptions = uploadedPhotos.map(p => p.description);
+
                         await addDoc(collection(db, "clockInRecords"), {
                             userId: state.currentUser.uid,
                             type: type,
                             timestamp: serverTimestamp(),
                             location: new GeoPoint(location.lat, location.lng),
-                            photoUrls: photoUrls,
-                            descriptions: descriptions,
+                            photoUrls,
+                            descriptions,
                         });
 
                         await updateDoc(doc(db, "users", state.currentUser.uid), {
@@ -1673,7 +1674,8 @@
 
                         showToast(`${type}打卡成功！`);
                         close();
-                        showPage('clock-in');
+                        showPage('clock-in', 'records');
+
                     } catch (error) {
                         console.error("Clock in error:", error);
                         showToast("打卡失敗，請稍後再試", true);
