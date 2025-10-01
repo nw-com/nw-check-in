@@ -110,7 +110,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.2.4</p>
+            <p class="text-gray-500">雲端測試版V1.2.5</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -609,7 +609,14 @@
                         });
                     }, (error) => {
                         console.error("Error fetching records: ", error);
-                        document.getElementById('records-list').innerHTML = `<p class="text-center text-red-500 p-4">讀取紀錄失敗</p>`;
+                        const recordsListEl = document.getElementById('records-list');
+                        if (recordsListEl) {
+                            let errorMessage = '讀取紀錄失敗。';
+                            if (error.code === 'failed-precondition') {
+                                errorMessage += '<br>缺少資料庫索引，請依照指示建立。';
+                            }
+                            recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">${errorMessage}</div>`;
+                        }
                     });
 
                     state.activeListeners.push(unsubscribe);
