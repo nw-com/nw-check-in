@@ -19,7 +19,7 @@
     <script>
         // Firebase 配置
         const firebaseConfig = {
-            apiKey: "AIzaSyDCJCxYKWnRpUQlKOe5vYnQlXVXmgQqunQ",
+            apiKey: "AIzaSyAzhLdWt...braries=marker",
             authDomain: "nw-check-in.firebaseapp.com",
             projectId: "nw-check-in",
             storageBucket: "nw-check-in.appspot.com",
@@ -35,7 +35,7 @@
         const auth = firebase.auth();
         
         // Google Maps API Key
-        const GOOGLE_MAPS_API_KEY = "AIzaSyDCJCxYKWnRpUQlKOe5vYnQlXVXmgQqunQ";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWt...braries=marker";
         
         // 自動登入測試用戶
         window.addEventListener('DOMContentLoaded', () => {
@@ -43,6 +43,10 @@
             firebase.auth().signInAnonymously()
                 .then(() => {
                     console.log('已自動登入測試用戶');
+                    // 登入成功後立即初始化打卡按鈕
+                    if (typeof initClockInButtonStatus === 'function') {
+                        initClockInButtonStatus();
+                    }
                 })
                 .catch((error) => {
                     console.error('登入失敗:', error);
