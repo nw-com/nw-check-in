@@ -9,6 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     
+    <!-- 自定義腳本 -->
+    <script src="js/dashboard-functions.js"></script>
+    
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -163,7 +166,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V2.0.2</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -502,7 +505,7 @@
                     const users = [];
                     querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
                     users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
-                        const statusText = user.status || '未打卡';
+                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', user.lastLocation);
                         const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
                             myStatusFound = true;
@@ -967,14 +970,16 @@
                                 <div>
                                     <p class="font-medium text-gray-800">${user.name}</p>
                                     <p class="text-sm text-gray-500">${user.email}</p>
-                                    <p class="text-xs text-gray-400">${user.phone || ''}</p>
+                                    <div class="flex items-center">
+                                        <p class="text-xs text-gray-400 mr-2">${user.phone || ''}</p>
+                                        <span class="text-xs px-2 py-1 rounded-full ${user.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}">${user.role === 'admin' ? '管理員' : '員工'}</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex space-x-2">
                                 <button data-userid="${user.id}" class="edit-user-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="edit" class="w-4 h-4"></i></button>
                                 <button data-userid="${user.id}" class="delete-user-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                            </div>
-                        `;
+                            </div>`;
                         userList.appendChild(userElement);
                     });
                     lucide.createIcons();
@@ -1908,10 +1913,7 @@
                 state.activeListeners = [];
             }
 
-            function getStatusColor(status) {
-                const colors = {'上班': 'text-green-600', '下班': 'text-gray-500', '外出': 'text-blue-600', '返回': 'text-teal-600'};
-                return colors[status] || 'text-yellow-600';
-            }
+            // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
 
             function showToast(message, isError = false) {
                 toast.textContent = message;
@@ -1956,5 +1958,4 @@
         });
     </script>
 </body>
-
 </html>
