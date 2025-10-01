@@ -22,19 +22,31 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
             break;
         case '外出':
-            statusText.textContent = '外出中';
+            let outboundText = '外出中';
+            if (state.outboundLocation) {
+                outboundText = `外出-${state.outboundLocation}`;
+            }
+            statusText.textContent = outboundText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '抵達':
-            statusText.textContent = '抵達';
+            let arriveText = '抵達';
+            if (state.outboundLocation) {
+                arriveText = `抵達-${state.outboundLocation}`;
+            }
+            statusText.textContent = arriveText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         case '離開':
-            statusText.textContent = '離開';
+            let leaveText = '離開';
+            if (state.outboundLocation) {
+                leaveText = `離開-${state.outboundLocation}`;
+            }
+            statusText.textContent = leaveText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '返回':
-            statusText.textContent = '上班中-辦公室';
+            statusText.textContent = '返回-辦公室';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         default:
@@ -107,23 +119,23 @@ function updateDashboardStatus() {
             case '外出':
                 statusText = '外出中';
                 if (state.outboundLocation) {
-                    statusText += `-${state.outboundLocation}`;
+                    statusText = `外出-${state.outboundLocation}`;
                 }
                 break;
             case '抵達':
                 statusText = '抵達';
                 if (state.outboundLocation) {
-                    statusText += `-${state.outboundLocation}`;
+                    statusText = `抵達-${state.outboundLocation}`;
                 }
                 break;
             case '離開':
                 statusText = '離開';
                 if (state.outboundLocation) {
-                    statusText += `-${state.outboundLocation}`;
+                    statusText = `離開-${state.outboundLocation}`;
                 }
                 break;
             case '返回':
-                statusText = '上班中-辦公室';
+                statusText = '返回-辦公室';
                 break;
             default:
                 statusText = '尚未打卡';
@@ -241,7 +253,15 @@ function enableButton(buttonText) {
     if (button) {
         button.disabled = false;
         button.classList.remove('bg-gray-300', 'cursor-not-allowed');
-        button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        
+        // 根據按鈕類型設置不同顏色
+        if (buttonText === '下班') {
+            button.classList.add('bg-red-500', 'hover:bg-red-600');
+        } else if (buttonText === '臨時請假') {
+            button.classList.add('bg-orange-500', 'hover:bg-orange-600');
+        } else {
+            button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        }
     }
 }
 
