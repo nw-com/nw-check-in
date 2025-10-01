@@ -162,7 +162,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.5.0</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -1433,16 +1433,27 @@
                                     <p class="font-bold text-xl">${state.currentUserData.name}</p>
                                     <p class="text-gray-500">${state.currentUserData.email}</p>
                                 </div>
-
-                                <!-- Change Password -->
-                                <div>
-                                    <h4 class="font-semibold mb-2 border-t pt-4">變更密碼</h4>
-                                    <form id="change-password-form" class="space-y-3">
-                                        <input type="password" id="new-password" placeholder="新密碼" class="w-full px-3 py-2 border rounded-md" required>
-                                        <input type="password" id="confirm-password" placeholder="確認新密碼" class="w-full px-3 py-2 border rounded-md" required>
-                                        <button type="submit" class="w-full bg-red-600 text-white py-2 rounded-md hover:bg-red-700">更新密碼</button>
-                                        <p id="password-change-error" class="text-red-500 text-sm text-center"></p>
-                                    </form>
+                                
+                                <!-- 目前上班狀態 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">目前上班狀態</h4>
+                                    <div id="profile-status" class="p-3 rounded-lg text-center bg-gray-100 text-gray-800">
+                                        讀取中...
+                                    </div>
+                                </div>
+                                
+                                <!-- 獎懲點數 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">獎懲點數</h4>
+                                    <p class="text-center text-2xl font-bold">${state.currentUserData.points || 0} 點</p>
+                                </div>
+                                
+                                <!-- 請假資訊 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">請假資訊</h4>
+                                    <div id="leave-status" class="p-3 rounded-lg text-center bg-gray-100 text-gray-800">
+                                        無請假紀錄
+                                    </div>
                                 </div>
                             </div>
 
@@ -1470,52 +1481,29 @@
 
                     showLoading(true);
                     try {
-                        const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${file.name}`);
+                        // 使用當前時間戳作為文件名，避免緩存問題
+                        const timestamp = new Date().getTime();
+                        const fileName = `avatar_${timestamp}.jpg`;
+                        const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${fileName}`);
                         await uploadBytes(storageRef, file);
                         const downloadURL = await getDownloadURL(storageRef);
-                        await updateDoc(doc(db, "users", state.currentUser.uid), { avatarUrl: downloadURL });
                         
+                        // 更新用戶文檔
+                        await updateDoc(doc(db, "users", state.currentUser.uid), { 
+                            avatarUrl: downloadURL 
+                        });
+                        
+                        // 更新當前用戶數據
+                        state.currentUserData.avatarUrl = downloadURL;
+                        
+                        // 更新界面
                         document.getElementById('modal-avatar').src = downloadURL;
-                        updateHeaderAvatar(); // Immediately update the header avatar
+                        document.getElementById('header-avatar').src = downloadURL;
                         
                         showToast("頭像更新成功");
                     } catch (error) {
                         console.error("Avatar upload error:", error);
                         showToast("頭像上傳失敗，請檢查Firebase規則", true);
-                    } finally {
-                        showLoading(false);
-                    }
-                });
-
-                changePasswordForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const newPassword = document.getElementById('new-password').value;
-                    const confirmPassword = document.getElementById('confirm-password').value;
-                    const errorEl = document.getElementById('password-change-error');
-                    errorEl.textContent = '';
-
-                    if (newPassword !== confirmPassword) {
-                        errorEl.textContent = "新密碼不相符。";
-                        return;
-                    }
-                    if (newPassword.length < 6) {
-                        errorEl.textContent = "密碼長度至少需要6個字元。";
-                        return;
-                    }
-
-                    showLoading(true);
-                    try {
-                        await updatePassword(state.currentUser, newPassword);
-                        showToast("密碼更新成功，下次登入請使用新密碼");
-                        close();
-                    } catch (error) {
-                        console.error("Password change error:", error);
-                        if (error.code === 'auth/requires-recent-login') {
-                           errorEl.textContent = "此操作需近期登入，請登出後再重新登入一次，即可變更密碼。";
-                           showToast("請重新登入以變更密碼", true);
-                        } else {
-                           errorEl.textContent = "密碼變更失敗，請稍後再試。";
-                        }
                     } finally {
                         showLoading(false);
                     }
@@ -1884,5 +1872,4 @@
         });
     </script>
 </body>
-
 </html>
