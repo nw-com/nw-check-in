@@ -38,20 +38,24 @@
         // Google Maps API Key
         const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtbrary_Jw5zOzyjOqq3CM0VYrDw";
         
-        // 自動登入測試用戶
+        // 初始化應用
         window.addEventListener('DOMContentLoaded', () => {
-            // 使用匿名登入
-            firebase.auth().signInAnonymously()
-                .then(() => {
-                    console.log('已自動登入測試用戶');
-                    // 登入成功後立即初始化打卡按鈕
+            // 檢查用戶登入狀態
+            firebase.auth().onAuthStateChanged((user) => {
+                if (user) {
+                    console.log('用戶已登入:', user.uid);
+                    // 用戶已登入，初始化打卡按鈕
                     if (typeof initClockInButtonStatus === 'function') {
                         initClockInButtonStatus();
                     }
-                })
-                .catch((error) => {
-                    console.error('登入失敗:', error);
-                });
+                } else {
+                    console.log('用戶未登入，顯示登入頁面');
+                    // 顯示登入頁面
+                    document.getElementById('login-page').classList.remove('hide');
+                    document.getElementById('app-container').classList.add('hide');
+                    document.getElementById('loading-screen').classList.add('hide');
+                }
+            });
         });
     </script>
     
@@ -1873,5 +1877,4 @@
         });
     </script>
 </body>
-
 </html>
