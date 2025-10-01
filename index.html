@@ -1287,6 +1287,8 @@
                              try {
                                 const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
                                 targetUserId = userCredential.user.uid;
+                                // 確保新用戶的獎懲點數預設為0
+                                updateData.points = 0;
                             } catch (creationError) {
                                 if (creationError.code === 'auth/email-already-in-use') throw new Error('此電子郵件已被註冊。');
                                 else throw new Error('建立驗證帳號失敗，請稍後再試。');
@@ -1486,10 +1488,8 @@
                         const fileName = `avatar_${timestamp}.jpg`;
                         const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${fileName}`);
                         
-                        // 壓縮圖片以確保上傳成功
-                        const compressedFile = await compressImage(file, 800);
-                        
-                        await uploadBytes(storageRef, compressedFile);
+                        // 直接上傳原始文件，不進行壓縮
+                        await uploadBytes(storageRef, file);
                         const downloadURL = await getDownloadURL(storageRef);
                         
                         // 更新用戶文檔
