@@ -163,7 +163,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V2.0.1</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -556,13 +556,13 @@
                         </div>
                         <div id="clock-in-buttons" class="grid grid-cols-2 gap-2 pt-4">
                             <button data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
-                            <button data-type="下班" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-gray-600">下班打卡</button>
-                            <button data-type="外出" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
-                            <button data-type="返回" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
-                            <button data-type="抵達" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">抵達打卡</button>
-                            <button data-type="離開" class="clock-in-btn bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-yellow-600">離開打卡</button>
-                            <button id="temp-leave-btn" class="bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">臨時請假</button>
-                            <button id="special-duty-btn" class="bg-gray-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-indigo-600">特殊勤務</button>
+                            <button data-type="下班" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">下班打卡</button>
+                            <button data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
+                            <button data-type="返回" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
+                            <button data-type="抵達" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">抵達打卡</button>
+                            <button data-type="離開" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-yellow-600">離開打卡</button>
+                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">臨時請假</button>
+                            <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-indigo-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-indigo-600">特殊勤務</button>
                         </div>
                     </div>`;
                 lucide.createIcons();
@@ -1933,5 +1933,4 @@
         });
     </script>
 </body>
-
 </html>

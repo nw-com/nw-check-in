@@ -156,11 +156,26 @@ function initClockInButtonStatus() {
     // 獲取當前用戶ID
     const userId = firebase.auth().currentUser.uid;
     
+    // 檢查按鈕容器是否存在
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，稍後重試");
+        setTimeout(initClockInButtonStatus, 500);
+        return;
+    }
+    
     // 禁用所有按鈕，等待狀態確認
-    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
-        button.disabled = true;
-        button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
-        button.classList.add('bg-gray-300', 'cursor-not-allowed');
+    clockInButtons.querySelectorAll('button').forEach(button => {
+        button.disabled = false; // 先設為可用
+        button.classList.remove('disabled');
+        if (button.dataset.type === '上班') {
+            button.classList.remove('bg-gray-300', 'cursor-not-allowed');
+            button.classList.add('bg-green-500', 'hover:bg-green-600');
+        } else {
+            button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'bg-green-500', 'hover:bg-green-600');
+            button.classList.add('bg-gray-300', 'cursor-not-allowed');
+            button.classList.add('disabled');
+        }
     });
     
     // 從Firestore獲取用戶最後的打卡狀態
@@ -184,16 +199,25 @@ function initClockInButtonStatus() {
     }).catch(error => {
         console.error("獲取用戶狀態失敗:", error);
         showToast("獲取用戶狀態失敗，請重新整理頁面", true);
+        // 出錯時至少啟用上班打卡按鈕
+        enableOnlyButton('上班');
     });
 }
 
 // 更新按鈕狀態
 function updateButtonStatus() {
+    // 先檢查按鈕容器是否存在
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，無法更新按鈕狀態");
+        return;
+    }
+    
     // 先禁用所有按鈕
-    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
-        button.disabled = true;
-        button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
-        button.classList.add('bg-gray-300', 'cursor-not-allowed');
+    clockInButtons.querySelectorAll('button').forEach(button => {
+        button.disabled = false; // 設為可用但添加disabled類
+        button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'bg-green-500', 'hover:bg-green-600');
+        button.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
     });
     
     // 根據當前狀態啟用相應按鈕
@@ -249,16 +273,27 @@ function updateButtonStatus() {
 
 // 啟用指定按鈕
 function enableButton(buttonText) {
-    const button = Array.from(document.querySelectorAll('#clock-in-buttons button')).find(btn => btn.textContent.trim() === buttonText);
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，無法啟用按鈕");
+        return;
+    }
+    
+    const button = Array.from(clockInButtons.querySelectorAll('button')).find(btn => 
+        btn.textContent.trim() === buttonText || (btn.dataset.type && btn.dataset.type === buttonText)
+    );
+    
     if (button) {
         button.disabled = false;
-        button.classList.remove('bg-gray-300', 'cursor-not-allowed');
+        button.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled');
         
         // 根據按鈕類型設置不同顏色
         if (buttonText === '下班') {
             button.classList.add('bg-red-500', 'hover:bg-red-600');
         } else if (buttonText === '臨時請假') {
             button.classList.add('bg-orange-500', 'hover:bg-orange-600');
+        } else if (buttonText === '上班') {
+            button.classList.add('bg-green-500', 'hover:bg-green-600');
         } else {
             button.classList.add('bg-blue-500', 'hover:bg-blue-600');
         }
@@ -267,15 +302,29 @@ function enableButton(buttonText) {
 
 // 只啟用指定按鈕，禁用其他所有按鈕
 function enableOnlyButton(buttonText) {
-    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
-        if (button.textContent.trim() === buttonText) {
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，無法啟用按鈕");
+        return;
+    }
+    
+    clockInButtons.querySelectorAll('button').forEach(button => {
+        if (button.textContent.trim() === buttonText || (button.dataset.type && button.dataset.type === buttonText)) {
             button.disabled = false;
-            button.classList.remove('bg-gray-300', 'cursor-not-allowed');
-            button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+            button.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled');
+            
+            // 根據按鈕類型設置不同顏色
+            if (buttonText === '上班') {
+                button.classList.add('bg-green-500', 'hover:bg-green-600');
+            } else if (buttonText === '下班') {
+                button.classList.add('bg-red-500', 'hover:bg-red-600');
+            } else {
+                button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+            }
         } else {
-            button.disabled = true;
-            button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
-            button.classList.add('bg-gray-300', 'cursor-not-allowed');
+            button.disabled = false; // 設為可用但添加disabled類
+            button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'bg-green-500', 'hover:bg-green-600');
+            button.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
         }
     });
 }
