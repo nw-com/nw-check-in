@@ -110,7 +110,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.2.8</p>
+            <p class="text-gray-500">雲端測試版V1.2.9</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -719,12 +719,13 @@
                 listenForUserLocations();
             }
 
-            function listenForUserLocations() {
+            async function listenForUserLocations() {
+                const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
                 const usersRef = collection(db, "users");
                 const q = query(usersRef, orderBy("name"));
 
                 const unsubscribe = onSnapshot(q, (querySnapshot) => {
-                    state.trackingMarkers.forEach(marker => marker.setMap(null));
+                    state.trackingMarkers.forEach(marker => marker.map = null);
                     state.trackingMarkers = [];
 
                     const userListEl = document.getElementById('user-tracking-list');
@@ -759,16 +760,15 @@
                         if (hasLocation) {
                             const position = { lat: user.lastLocation.latitude, lng: user.lastLocation.longitude };
                             
-                            const marker = new google.maps.Marker({
+                            const markerIcon = document.createElement('img');
+                            markerIcon.src = user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${user.name.charAt(0)}`;
+                            markerIcon.className = "w-9 h-9 rounded-full border-2 border-white shadow-md object-cover";
+
+                            const marker = new AdvancedMarkerElement({
                                 position,
                                 map: state.trackingMap,
                                 title: user.name,
-                                icon: {
-                                    url: user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${user.name.charAt(0)}`,
-                                    scaledSize: new google.maps.Size(36, 36),
-                                    anchor: new google.maps.Point(18, 18),
-                                    origin: new google.maps.Point(0, 0),
-                                }
+                                content: markerIcon,
                             });
 
                             const infoWindow = new google.maps.InfoWindow({
@@ -782,19 +782,13 @@
                             });
 
                             marker.addListener('click', () => {
-                                infoWindow.open({
-                                    anchor: marker,
-                                    map: state.trackingMap,
-                                });
+                                infoWindow.open(state.trackingMap, marker);
                             });
                             
                             userElement.addEventListener('click', () => {
                                 state.trackingMap.panTo(position);
                                 state.trackingMap.setZoom(17);
-                                infoWindow.open({
-                                    anchor: marker,
-                                    map: state.trackingMap,
-                                });
+                                infoWindow.open(state.trackingMap, marker);
                             });
 
                             state.trackingMarkers.push(marker);
@@ -1701,7 +1695,7 @@
                 };
                 
                 const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly&libraries=marker`;
                 script.async = true;
                 script.defer = true;
                 
