@@ -498,7 +498,7 @@
                             <div id="my-status" class="text-gray-600">讀取中...</div>
                         </div>
                         <div>
-                            <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有員工狀態</h3>
+                            <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有同仁狀態</h3>
                             <div id="all-users-status" class="space-y-2">
                                <div class="text-center p-4 text-gray-500">讀取中...</div>
                             </div>
@@ -546,7 +546,10 @@
                                     <div class="flex items-center">
                                         <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
                                         <div>
-                                            <span class="font-medium text-gray-700">${user.name}</span>
+                                            <span class="font-medium text-gray-700 user-name-btn cursor-pointer" 
+                                                  data-user-id="${user.id}" 
+                                                  data-user-name="${user.name}" 
+                                                  data-user-phone="${user.phone || ''}">${user.name}</span>
                                             <div class="flex items-center mt-1">
                                                 <span class="text-sm font-semibold ${statusColor} mr-2">${statusText}</span>
                                                 <span class="text-xs text-gray-500">${timeFormatted}</span>
@@ -1218,8 +1221,10 @@
                                     <img id="user-avatar-preview" src="${isEditing && user.avatarUrl ? user.avatarUrl : defaultAvatar}" class="w-20 h-20 rounded-full object-cover">
                                     <input type="file" id="user-avatar-upload" class="hidden" accept="image/*">
                                     <div class="flex space-x-2">
+                                        ${!isEditing ? `
                                         <button type="button" id="user-upload-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">上傳照片</button>
                                         <button type="button" id="user-camera-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">開啟相機</button>
+                                        ` : `<p class="text-sm text-gray-500">已存在帳號無法編輯頭像</p>`}
                                     </div>
                                 </div>
                                 
@@ -1276,22 +1281,24 @@
                 const avatarUploadInput = document.getElementById('user-avatar-upload');
 
                 // --- Avatar Logic ---
-                document.getElementById('user-upload-avatar-btn').addEventListener('click', () => avatarUploadInput.click());
-                avatarUploadInput.addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        newUserAvatarFile = file;
-                        avatarPreview.src = URL.createObjectURL(file);
-                    }
-                });
-                 document.getElementById('user-camera-avatar-btn').addEventListener('click', () => {
-                    openAvatarCameraModal((blob) => {
-                        if (blob) {
-                            newUserAvatarFile = blob;
-                            avatarPreview.src = URL.createObjectURL(blob);
+                if (!isEditing) {
+                    document.getElementById('user-upload-avatar-btn').addEventListener('click', () => avatarUploadInput.click());
+                    avatarUploadInput.addEventListener('change', (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            newUserAvatarFile = file;
+                            avatarPreview.src = URL.createObjectURL(file);
                         }
                     });
-                });
+                    document.getElementById('user-camera-avatar-btn').addEventListener('click', () => {
+                        openAvatarCameraModal((blob) => {
+                            if (blob) {
+                                newUserAvatarFile = blob;
+                                avatarPreview.src = URL.createObjectURL(blob);
+                            }
+                        });
+                    });
+                }
 
 
                 // --- Form Logic ---
@@ -1492,8 +1499,7 @@
                                 <!-- Avatar section -->
                                 <div class="flex flex-col items-center space-y-2">
                                     <img id="modal-avatar" src="${state.currentUserData.avatarUrl || `https://placehold.co/80x80/EFEFEF/333333?text=${state.currentUserData.name.charAt(0)}`}" alt="Avatar" class="w-20 h-20 rounded-full object-cover">
-                                    <input type="file" id="avatar-upload" class="hidden" accept="image/*">
-                                    <button id="change-avatar-btn" class="text-sm text-red-600 hover:underline">更換頭像</button>
+                                    <p class="text-sm text-gray-500">無法更換頭像</p>
                                 </div>
 
                                 <!-- Info -->
@@ -1528,12 +1534,10 @@
                 lucide.createIcons();
 
                 const modal = document.getElementById(modalId);
-                const avatarUploadInput = document.getElementById('avatar-upload');
                 const changePasswordForm = document.getElementById('change-password-form');
                 const logoutBtn = document.getElementById('logout-btn');
 
                 modal.querySelector('.close-btn').addEventListener('click', close);
-                document.getElementById('change-avatar-btn').addEventListener('click', () => avatarUploadInput.click());
 
                 avatarUploadInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
@@ -1951,6 +1955,72 @@
                 return timestamp.toDate().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
             }
         }
+
+        // 用戶彈出視窗功能
+        document.addEventListener('click', function(e) {
+            // 關閉已打開的彈出視窗
+            if (!e.target.closest('.user-popup') && !e.target.closest('.user-name-btn')) {
+                const existingPopup = document.querySelector('.user-popup');
+                if (existingPopup) {
+                    existingPopup.remove();
+                }
+            }
+            
+            // 點擊用戶名稱時顯示彈出視窗
+            if (e.target.classList.contains('user-name-btn') || e.target.closest('.user-name-btn')) {
+                const nameBtn = e.target.classList.contains('user-name-btn') ? e.target : e.target.closest('.user-name-btn');
+                const userId = nameBtn.dataset.userId;
+                const userName = nameBtn.dataset.userName;
+                const userPhone = nameBtn.dataset.userPhone;
+                
+                // 關閉已打開的彈出視窗
+                const existingPopup = document.querySelector('.user-popup');
+                if (existingPopup) {
+                    existingPopup.remove();
+                }
+                
+                // 創建新的彈出視窗
+                const popup = document.createElement('div');
+                popup.className = 'user-popup fixed bg-white rounded-lg shadow-lg p-3 z-50';
+                popup.style.width = '200px';
+                
+                // 計算位置 (在名稱下方)
+                const rect = nameBtn.getBoundingClientRect();
+                popup.style.left = `${rect.left}px`;
+                popup.style.top = `${rect.bottom + 5}px`;
+                
+                // 添加按鈕
+                popup.innerHTML = `
+                    <div class="flex justify-between space-x-2">
+                        <button class="call-btn flex-1 bg-blue-500 text-white py-2 px-3 rounded-md flex items-center justify-center" ${userPhone ? '' : 'disabled'} data-phone="${userPhone}">
+                            <i data-lucide="phone" class="w-4 h-4 mr-1"></i>撥打電話
+                        </button>
+                        <button class="line-btn flex-1 bg-green-500 text-white py-2 px-3 rounded-md flex items-center justify-center">
+                            <i data-lucide="message-circle" class="w-4 h-4 mr-1"></i>Line聊天
+                        </button>
+                    </div>
+                `;
+                
+                // 添加到頁面
+                document.body.appendChild(popup);
+                lucide.createIcons();
+                
+                // 添加按鈕事件
+                popup.querySelector('.call-btn').addEventListener('click', function() {
+                    const phone = this.dataset.phone;
+                    if (phone) {
+                        window.open(`tel:${phone}`);
+                    } else {
+                        showToast('此用戶沒有設置電話號碼', true);
+                    }
+                });
+                
+                popup.querySelector('.line-btn').addEventListener('click', function() {
+                    // 使用Line URL Scheme開啟聊天
+                    window.open(`https://line.me/R/oaMessage/@${userName}`);
+                });
+            }
+        });
 
         // --- Initial Load ---
         document.addEventListener('DOMContentLoaded', () => {
