@@ -431,7 +431,8 @@
                 }
             });
 
-            profileAvatarBtn.addEventListener('click', renderProfileModal);
+            // 確保在任何時候點擊頭像按鈕都能打開個人資料
+            document.getElementById('profile-avatar-btn').addEventListener('click', renderProfileModal);
 
             function showPage(pageName, subPage = null, params = {}) {
                 cleanupListeners();
