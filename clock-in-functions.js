@@ -19,7 +19,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
             break;
         case '下班':
             statusText.textContent = '已下班';
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '外出':
             let outboundText = '外出中';
@@ -27,7 +27,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
                 outboundText = `外出-${state.outboundLocation}`;
             }
             statusText.textContent = outboundText;
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-emerald-100 text-emerald-800';
             break;
         case '抵達':
             let arriveText = '抵達';
@@ -35,7 +35,7 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
                 arriveText = `抵達-${state.outboundLocation}`;
             }
             statusText.textContent = arriveText;
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '離開':
             let leaveText = '離開';
@@ -43,11 +43,19 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
                 leaveText = `離開-${state.outboundLocation}`;
             }
             statusText.textContent = leaveText;
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-amber-100 text-amber-800';
             break;
         case '返回':
             statusText.textContent = '返回-辦公室';
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-pink-100 text-pink-800';
+            break;
+        case '臨時請假':
+            statusText.textContent = '請假中';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
+            break;
+        case '特殊勤務':
+            statusText.textContent = '出勤中';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         default:
             statusText.textContent = '尚未打卡';
@@ -411,6 +419,146 @@ function createLocationInputModal() {
     document.body.appendChild(modal);
 }
 
+// 臨時請假彈窗
+function openTempLeaveModal() {
+    if (!state.currentLocation) {
+        showToast("無法取得目前位置，請稍後再試", true);
+        return;
+    }
+    
+    // 創建彈窗背景
+    const backdrop = document.createElement('div');
+    backdrop.id = 'modal-backdrop';
+    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    
+    // 創建彈窗
+    const modal = document.createElement('div');
+    modal.id = 'temp-leave-modal';
+    modal.className = 'bg-white rounded-lg p-6 w-[90%] max-w-md';
+    
+    // 彈窗標題
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-bold mb-4 text-center';
+    title.textContent = '臨時請假';
+    
+    // 請假原因輸入框
+    const reasonLabel = document.createElement('label');
+    reasonLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    reasonLabel.textContent = '請假原因';
+    
+    const reasonInput = document.createElement('textarea');
+    reasonInput.id = 'leave-reason';
+    reasonInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    reasonInput.rows = 3;
+    reasonInput.placeholder = '請輸入請假原因';
+    
+    // 按鈕容器
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex justify-end space-x-2';
+    
+    // 取消按鈕
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400';
+    cancelButton.textContent = '取消';
+    cancelButton.addEventListener('click', closeAllModals);
+    
+    // 確認按鈕
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600';
+    confirmButton.textContent = '確認請假';
+    confirmButton.addEventListener('click', () => {
+        const reason = document.getElementById('leave-reason').value.trim();
+        if (reason) {
+            closeAllModals();
+            openCameraModal('臨時請假', state.currentLocation, { reason });
+        } else {
+            showToast('請輸入請假原因', true);
+        }
+    });
+    
+    // 組裝彈窗
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(confirmButton);
+    modal.appendChild(title);
+    modal.appendChild(reasonLabel);
+    modal.appendChild(reasonInput);
+    modal.appendChild(buttonContainer);
+    
+    // 添加到頁面
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+}
+
+// 特殊勤務彈窗
+function openSpecialDutyModal() {
+    if (!state.currentLocation) {
+        showToast("無法取得目前位置，請稍後再試", true);
+        return;
+    }
+    
+    // 創建彈窗背景
+    const backdrop = document.createElement('div');
+    backdrop.id = 'modal-backdrop';
+    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    
+    // 創建彈窗
+    const modal = document.createElement('div');
+    modal.id = 'special-duty-modal';
+    modal.className = 'bg-white rounded-lg p-6 w-[90%] max-w-md';
+    
+    // 彈窗標題
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-bold mb-4 text-center';
+    title.textContent = '特殊勤務';
+    
+    // 勤務說明輸入框
+    const dutyLabel = document.createElement('label');
+    dutyLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    dutyLabel.textContent = '勤務說明';
+    
+    const dutyInput = document.createElement('textarea');
+    dutyInput.id = 'duty-description';
+    dutyInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    dutyInput.rows = 3;
+    dutyInput.placeholder = '請輸入特殊勤務說明';
+    
+    // 按鈕容器
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex justify-end space-x-2';
+    
+    // 取消按鈕
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400';
+    cancelButton.textContent = '取消';
+    cancelButton.addEventListener('click', closeAllModals);
+    
+    // 確認按鈕
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600';
+    confirmButton.textContent = '確認勤務';
+    confirmButton.addEventListener('click', () => {
+        const description = document.getElementById('duty-description').value.trim();
+        if (description) {
+            closeAllModals();
+            openCameraModal('特殊勤務', state.currentLocation, { description });
+        } else {
+            showToast('請輸入勤務說明', true);
+        }
+    });
+    
+    // 組裝彈窗
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(confirmButton);
+    modal.appendChild(title);
+    modal.appendChild(dutyLabel);
+    modal.appendChild(dutyInput);
+    modal.appendChild(buttonContainer);
+    
+    // 添加到頁面
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+}
+
 // 關閉所有彈窗
 function closeAllModals() {
     const backdrop = document.getElementById('modal-backdrop');
@@ -422,6 +570,20 @@ function closeAllModals() {
     if (locationModal) locationModal.classList.add('hidden');
     if (leaveModal) leaveModal.classList.add('hidden');
     if (dutyModal) dutyModal.classList.add('hidden');
+    
+    // 如果元素存在但沒有hidden類，則移除元素
+    if (backdrop && !backdrop.classList.contains('hidden')) {
+        backdrop.remove();
+    }
+    if (locationModal && !locationModal.classList.contains('hidden')) {
+        locationModal.remove();
+    }
+    if (leaveModal && !leaveModal.classList.contains('hidden')) {
+        leaveModal.remove();
+    }
+    if (dutyModal && !dutyModal.classList.contains('hidden')) {
+        dutyModal.remove();
+    }
 }
 
 // 添加事件監聽器
