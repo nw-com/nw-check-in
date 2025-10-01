@@ -564,6 +564,25 @@
                         }
                     });
                     if(!myStatusFound && document.getElementById('my-status')){ document.getElementById('my-status').textContent = '無法取得您的狀態'; }
+                    
+                    // 添加照片和地圖按鈕的事件監聽器
+                    document.querySelectorAll('.view-photo-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const photoUrl = e.currentTarget.dataset.photo;
+                            const description = e.currentTarget.dataset.desc;
+                            if(photoUrl) openPhotoModal([photoUrl], [description]);
+                            else showToast("無照片可顯示", true);
+                        });
+                    });
+                    
+                    document.querySelectorAll('.view-map-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const lat = parseFloat(e.currentTarget.dataset.lat);
+                            const lng = parseFloat(e.currentTarget.dataset.lng);
+                            if(lat && lng) openMapModal(lat, lng);
+                            else showToast("無位置資訊可顯示", true);
+                        });
+                    });
                 });
                 state.activeListeners.push(unsubscribe);
             }
