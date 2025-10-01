@@ -1989,14 +1989,11 @@
                 popup.style.left = `${rect.left}px`;
                 popup.style.top = `${rect.bottom + 5}px`;
                 
-                // 添加按鈕
+                // 添加按鈕 (只保留撥打電話按鈕)
                 popup.innerHTML = `
-                    <div class="flex justify-between space-x-2">
-                        <button class="call-btn flex-1 bg-blue-500 text-white py-2 px-3 rounded-md flex items-center justify-center" ${userPhone ? '' : 'disabled'} data-phone="${userPhone}">
+                    <div class="flex justify-center">
+                        <button class="call-btn bg-blue-500 text-white py-2 px-3 rounded-md flex items-center justify-center" ${userPhone ? '' : 'disabled'} data-phone="${userPhone}">
                             <i data-lucide="phone" class="w-4 h-4 mr-1"></i>撥打電話
-                        </button>
-                        <button class="line-btn flex-1 bg-green-500 text-white py-2 px-3 rounded-md flex items-center justify-center">
-                            <i data-lucide="message-circle" class="w-4 h-4 mr-1"></i>Line聊天
                         </button>
                     </div>
                 `;
@@ -2015,10 +2012,7 @@
                     }
                 });
                 
-                popup.querySelector('.line-btn').addEventListener('click', function() {
-                    // 使用Line URL Scheme開啟聊天
-                    window.open(`https://line.me/R/oaMessage/@${userName}`);
-                });
+                // Line聊天按鈕已移除
             }
         });
 
