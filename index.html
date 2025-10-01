@@ -1591,10 +1591,16 @@
 
                 document.getElementById('capture-btn').addEventListener('click', () => {
                     const context = canvas.getContext('2d');
-                    // 設置固定尺寸，與拍照視窗一致
-                    canvas.width = 390;
-                    canvas.height = 520; // 調整高度以符合視窗比例
-                    // 繪製並縮放視頻到固定尺寸
+                    // 設置固定寬度，但保持原始比例
+                    const videoWidth = video.videoWidth;
+                    const videoHeight = video.videoHeight;
+                    const targetWidth = 390;
+                    const targetHeight = (videoHeight / videoWidth) * targetWidth;
+                    
+                    canvas.width = targetWidth;
+                    canvas.height = targetHeight;
+                    
+                    // 繪製並保持原始比例
                     context.drawImage(video, 0, 0, canvas.width, canvas.height);
                     
                     // 添加浮水印
