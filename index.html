@@ -60,6 +60,7 @@
     </script>
     
     <script src="clock-in-functions.js" defer></script>
+    <script src="reset-points.js" defer></script>
     <style>
         body {
             font-family: 'Inter', 'Noto Sans TC', sans-serif;
@@ -162,7 +163,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.8.0</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -910,10 +911,14 @@
                         <button id="add-user-btn" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
                             <i data-lucide="plus-circle" class="w-4 h-4 mr-2"></i>新增帳號
                         </button>
+                        <button id="reset-points-btn" class="w-full bg-yellow-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-yellow-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>重置所有用戶點數為0
+                        </button>
                         <div id="user-list" class="space-y-2"></div>
                     </div>`;
                 lucide.createIcons();
                 document.getElementById('add-user-btn').addEventListener('click', () => openUserModal());
+                document.getElementById('reset-points-btn').addEventListener('click', resetAllUserPoints);
 
                 const userList = document.getElementById('user-list');
                 const usersRef = collection(db, "users");
@@ -1300,9 +1305,25 @@
                         
                         // --- Avatar Upload (if new avatar is set) ---
                         if (newUserAvatarFile) {
-                             const storageRef = ref(storage, `avatars/${targetUserId}/avatar_${Date.now()}`);
-                             await uploadBytes(storageRef, newUserAvatarFile);
-                             newAvatarUrl = await getDownloadURL(storageRef);
+                            try {
+                                // 使用 Base64 編碼替代 Firebase Storage 上傳
+                                const reader = new FileReader();
+                                const base64Promise = new Promise((resolve, reject) => {
+                                    reader.onload = () => resolve(reader.result);
+                                    reader.onerror = () => reject(new Error("讀取檔案失敗"));
+                                    reader.readAsDataURL(newUserAvatarFile);
+                                });
+                                
+                                // 等待 Base64 轉換完成
+                                const base64String = await base64Promise;
+                                
+                                // 直接將 Base64 字串儲存到 Firestore
+                                newAvatarUrl = base64String;
+                                console.log("頭像已轉換為 Base64 格式");
+                            } catch (avatarError) {
+                                console.error("頭像處理錯誤:", avatarError);
+                                showToast("頭像處理失敗，但會繼續儲存其他資料", true);
+                            }
                         }
                         updateData.avatarUrl = newAvatarUrl;
 
@@ -1911,5 +1932,4 @@
         });
     </script>
 </body>
-
 </html>
