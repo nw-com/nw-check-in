@@ -11,6 +11,7 @@
     
     <!-- 自定義腳本 -->
     <script src="js/dashboard-functions.js"></script>
+    <script src="features.js" defer></script>
     
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -225,6 +226,9 @@
                 </button>
                 <button id="nav-tracking" data-tab="tracking" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="map-pin"></i><span class="text-xs mt-1">追蹤</span>
+                </button>
+                <button id="nav-features" data-tab="features" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
+                    <i data-lucide="layers"></i><span class="text-xs mt-1">功能</span>
                 </button>
                 <button id="nav-settings" data-tab="settings" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="settings"></i><span class="text-xs mt-1">設定</span>
@@ -447,7 +451,8 @@
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
                     'tracking': () => state.currentUserData.role === 'admin' ? renderTracking() : renderAccessDenied(),
-                    'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
+                    'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
+                    'features': () => renderFeatures(subPage || 'news')
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
                 try {
