@@ -461,7 +461,7 @@
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking() : renderAccessDenied(),
+                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news')
                 };
@@ -828,8 +828,32 @@
                 }
             }
             
-            function renderTracking() {
+            function renderTracking(subPage) {
                 mainContent.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
+                        <button data-subtab="map" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'map' || !subPage ? 'active' : ''}">人員地圖</button>
+                        <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤紀錄</button>
+                        <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">假單審核</button>
+                        <button data-subtab="reports" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'reports' ? 'active' : ''}">表單印製</button>
+                    </div>
+                    <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
+                
+                const subPageContent = document.getElementById('sub-page-content');
+                if (subPage === 'attendance') {
+                    renderTrackingAttendance(subPageContent);
+                } else if (subPage === 'leave') {
+                    renderTrackingLeave(subPageContent);
+                } else if (subPage === 'reports') {
+                    renderTrackingReports(subPageContent);
+                } else {
+                    renderTrackingMap(subPageContent);
+                }
+                
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('tracking', btn.dataset.subtab)));
+            }
+            
+            function renderTrackingMap(container) {
+                container.innerHTML = `
                     <div class="h-full w-full relative">
                         <div id="tracking-map" class="h-full w-full"></div>
                         <div id="tracking-map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
@@ -870,6 +894,229 @@
 
                 mapLoader.classList.add('hide');
                 listenForUserLocations();
+            }
+            
+            function renderTrackingAttendance(container) {
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="user-select" class="text-sm font-medium">選擇人員:</label>
+                                <select id="user-select" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all">全部人員</option>
+                                    <!-- 人員選項將動態添加 -->
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="record-date" class="text-sm font-medium">選擇日期:</label>
+                                <input type="date" id="record-date" value="${new Date().toISOString().split('T')[0]}" class="border border-gray-300 rounded-md px-2 py-1">
+                            </div>
+                        </div>
+                        <div id="attendance-records-list" class="space-y-3">
+                            <div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>
+                        </div>
+                    </div>
+                `;
+                
+                // 載入所有用戶
+                const usersRef = collection(db, "users");
+                const userSelect = document.getElementById('user-select');
+                
+                getDocs(usersRef).then((querySnapshot) => {
+                    const users = [];
+                    querySnapshot.forEach(doc => {
+                        users.push({ id: doc.id, ...doc.data() });
+                    });
+                    
+                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = user.name;
+                        userSelect.appendChild(option);
+                    });
+                    
+                    // 初始載入記錄
+                    loadAttendanceRecords();
+                });
+                
+                const dateInput = document.getElementById('record-date');
+                userSelect.addEventListener('change', loadAttendanceRecords);
+                dateInput.addEventListener('change', loadAttendanceRecords);
+                
+                function loadAttendanceRecords() {
+                    const selectedDate = new Date(dateInput.value);
+                    const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
+                    const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                    const selectedUserId = userSelect.value;
+                    
+                    const recordsRef = collection(db, "clockInRecords");
+                    let q;
+                    
+                    if (selectedUserId === 'all') {
+                        q = query(recordsRef, 
+                            where("timestamp", ">=", startOfDay),
+                            where("timestamp", "<=", endOfDay)
+                        );
+                    } else {
+                        q = query(recordsRef, 
+                            where("userId", "==", selectedUserId),
+                            where("timestamp", ">=", startOfDay),
+                            where("timestamp", "<=", endOfDay)
+                        );
+                    }
+                    
+                    const recordsList = document.getElementById('attendance-records-list');
+                    recordsList.innerHTML = `<div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>`;
+                    
+                    getDocs(q).then((querySnapshot) => {
+                        if (querySnapshot.empty) {
+                            recordsList.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                            return;
+                        }
+                        
+                        const records = [];
+                        querySnapshot.forEach(doc => {
+                            records.push({ id: doc.id, ...doc.data() });
+                        });
+                        
+                        // 獲取所有用戶資料，用於顯示名稱
+                        getDocs(usersRef).then((usersSnapshot) => {
+                            const usersMap = {};
+                            usersSnapshot.forEach(doc => {
+                                usersMap[doc.id] = doc.data().name;
+                            });
+                            
+                            recordsList.innerHTML = '';
+                            records.sort((a, b) => {
+                                const timeA = a.timestamp?.toDate?.() || new Date(0);
+                                const timeB = b.timestamp?.toDate?.() || new Date(0);
+                                return timeB - timeA;
+                            }).forEach(record => {
+                                const time = record.timestamp?.toDate?.() || new Date();
+                                const userName = usersMap[record.userId] || '未知用戶';
+                                
+                                const card = document.createElement('div');
+                                card.className = 'bg-white p-4 rounded-lg shadow border border-gray-200';
+                                card.innerHTML = `
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <div class="font-semibold">${userName}</div>
+                                            <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
+                                            <div class="mt-1 flex items-center">
+                                                <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
+                                                ${record.location ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
+                                            </div>
+                                            ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            ${record.location ? `
+                                                <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                                    data-lat="${record.location.latitude}" 
+                                                    data-lng="${record.location.longitude}">
+                                                    <i data-lucide="map-pin"></i> 地圖
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 flex space-x-2 overflow-x-auto">
+                                        ${record.photoUrls && record.photoUrls.length > 0 ? `
+                                            <button class="photo-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" 
+                                                data-photos='${JSON.stringify(record.photoUrls || [])}' 
+                                                data-descriptions='${JSON.stringify(record.descriptions || [])}'>
+                                                <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                `;
+                                recordsList.appendChild(card);
+                            });
+                            
+                            lucide.createIcons();
+                            
+                            // 添加地圖和照片按鈕的事件監聽器
+                            document.querySelectorAll('.map-btn').forEach(btn => {
+                                btn.addEventListener('click', (e) => {
+                                    const lat = parseFloat(e.currentTarget.dataset.lat);
+                                    const lng = parseFloat(e.currentTarget.dataset.lng);
+                                    if(lat && lng) openMapModal(lat, lng);
+                                    else showToast("無位置資訊可顯示", true);
+                                });
+                            });
+                            
+                            document.querySelectorAll('.photo-btn').forEach(btn => {
+                                btn.addEventListener('click', (e) => {
+                                    const photos = JSON.parse(e.currentTarget.dataset.photos);
+                                    const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
+                                    openPhotoModal(photos, descriptions);
+                                });
+                            });
+                        });
+                    }).catch(error => {
+                        console.error("Error fetching records:", error);
+                        recordsList.innerHTML = `<div class="text-center text-red-500 p-4">讀取紀錄失敗。</div>`;
+                    });
+                }
+                
+                function getStatusBgColor(type) {
+                    switch(type) {
+                        case '上班': return 'bg-green-100 text-green-800';
+                        case '下班': return 'bg-red-100 text-red-800';
+                        case '外出': return 'bg-blue-100 text-blue-800';
+                        case '返回': return 'bg-purple-100 text-purple-800';
+                        case '臨時請假': return 'bg-orange-100 text-orange-800';
+                        case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
+                        default: return 'bg-gray-100 text-gray-800';
+                    }
+                }
+            }
+            
+            function renderTrackingLeave(container) {
+                container.innerHTML = `
+                    <div class="p-4 flex flex-col items-center justify-center h-full">
+                        <div class="text-center">
+                            <i data-lucide="construction" class="w-16 h-16 text-gray-400 mx-auto mb-4"></i>
+                            <h2 class="text-xl font-semibold text-gray-700 mb-2">假單審核功能開發中</h2>
+                            <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+            
+            function renderTrackingReports(container) {
+                container.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
+                        <button data-report="personal" class="report-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 active">個人日報表</button>
+                        <button data-report="all" class="report-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600">全體月報表</button>
+                    </div>
+                    <div id="report-content" class="p-4">
+                        <div class="text-center">
+                            <i data-lucide="construction" class="w-16 h-16 text-gray-400 mx-auto mb-4"></i>
+                            <h2 class="text-xl font-semibold text-gray-700 mb-2">報表功能開發中</h2>
+                            <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                
+                container.querySelectorAll('.report-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        container.querySelectorAll('.report-tab-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        
+                        const reportType = btn.dataset.report;
+                        const reportContent = document.getElementById('report-content');
+                        
+                        reportContent.innerHTML = `
+                            <div class="text-center">
+                                <i data-lucide="construction" class="w-16 h-16 text-gray-400 mx-auto mb-4"></i>
+                                <h2 class="text-xl font-semibold text-gray-700 mb-2">${reportType === 'personal' ? '個人日報表' : '全體月報表'}功能開發中</h2>
+                                <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
+                            </div>
+                        `;
+                        lucide.createIcons();
+                    });
+                });
             }
 
             async function listenForUserLocations() {
