@@ -110,7 +110,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.2.6</p>
+            <p class="text-gray-500">雲端測試版V1.2.8</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -219,7 +219,9 @@
             googleMapsLoaded: false,
             activeListeners: [],
             currentLocation: null,
-            users: [], 
+            users: [],
+            trackingMap: null,
+            trackingMarkers: [],
         };
         
         const loadingScreen = document.getElementById('loading-screen');
@@ -381,11 +383,13 @@
             function showPage(pageName, subPage = null, params = {}) {
                 cleanupListeners();
                 state.currentLocation = null;
+                state.trackingMap = null;
+                state.trackingMarkers = [];
                 mainContent.innerHTML = `<div class="flex justify-center items-center h-full"><div class="loader"></div></div>`;
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking(subPage || 'locate') : renderAccessDenied(),
+                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking() : renderAccessDenied(),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
@@ -537,8 +541,6 @@
                     const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
                     
                     const recordsRef = collection(db, "clockInRecords");
-                    // Firestore's orderBy can be tricky with composite indexes. 
-                    // A more robust way is to fetch and then sort on the client.
                     const q = query(recordsRef, 
                         where("userId", "==", state.currentUser.uid),
                         where("timestamp", ">=", startOfDay),
@@ -559,14 +561,13 @@
                             records.push({ id: doc.id, ...doc.data() });
                         });
                         
-                        // Sort records by timestamp descending (newest first) on the client side
                         records.sort((a, b) => {
                             const timeA = a.timestamp?.toDate?.() || new Date(0);
                             const timeB = b.timestamp?.toDate?.() || new Date(0);
                             return timeB - timeA;
                         });
                         
-                        recordsListEl.innerHTML = ''; // Clear previous content
+                        recordsListEl.innerHTML = '';
                         records.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
@@ -614,11 +615,7 @@
                         console.error("Error fetching records: ", error);
                         const recordsListEl = document.getElementById('records-list');
                         if (recordsListEl) {
-                            let errorMessage = '讀取紀錄失敗。';
-                            if (error.code === 'failed-precondition') {
-                                errorMessage += '<br>缺少資料庫索引，請依照前一則訊息的指示建立索引。';
-                            }
-                            recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">${errorMessage}</div>`;
+                             recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">讀取紀錄失敗。請確認您的 Firestore 安全規則是否正確。</div>`;
                         }
                     });
 
@@ -638,13 +635,9 @@
                 state.currentLocation = null;
                 
                 if (!window.google || !window.google.maps) {
-                    console.log("等待Google Maps API加載...");
-                    loadGoogleMapsScript();
-                    setTimeout(initClockInMap, 1000);
+                    setTimeout(initClockInMap, 100);
                     return;
                 }
-                
-                console.log("開始初始化地圖...");
                 
                 try {
                     const pos = await new Promise((resolve, reject) => {
@@ -657,8 +650,6 @@
                     
                     const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                     state.currentLocation = coords;
-                    
-                    console.log("獲取位置成功:", coords);
                     
                     if (mapDiv.offsetWidth === 0 || mapDiv.offsetHeight === 0) {
                         mapDiv.style.width = '100%';
@@ -677,7 +668,6 @@
                     });
                     
                     mapLoader.classList.add('hide');
-                    console.log("地圖初始化成功");
                 } catch (error) {
                     console.error("初始化地圖時發生錯誤:", error);
                     mapDiv.innerHTML = `<div class="p-4 text-center text-red-500">無法取得您的位置。請確認已開啟定位服務。</div>`;
@@ -685,11 +675,135 @@
                     showToast("無法取得位置資訊，請確認已開啟定位服務", true);
                 }
             }
+            
+            function renderTracking() {
+                mainContent.innerHTML = `
+                    <div class="h-full w-full relative">
+                        <div id="tracking-map" class="h-full w-full"></div>
+                        <div id="tracking-map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
+                        <div class="absolute bottom-0 left-0 right-0 p-2">
+                            <div id="user-tracking-list" class="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg max-h-[150px] overflow-y-auto p-2 space-y-2">
+                                <!-- User list will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                `;
 
-
-            function renderTracking(subPage) {
-                mainContent.innerHTML = `<div class="p-4">追蹤功能待實現</div>`;
+                if (state.googleMapsLoaded) {
+                    initTrackingMap();
+                } else {
+                    const interval = setInterval(() => {
+                        if (state.googleMapsLoaded) {
+                            clearInterval(interval);
+                            initTrackingMap();
+                        }
+                    }, 100);
+                }
             }
+
+            async function initTrackingMap() {
+                const mapDiv = document.getElementById('tracking-map');
+                const mapLoader = document.getElementById('tracking-map-loader');
+                if (!mapDiv || !mapLoader) return;
+
+                const defaultCenter = { lat: 25.0330, lng: 121.5654 };
+                
+                state.trackingMap = new google.maps.Map(mapDiv, {
+                    center: defaultCenter,
+                    zoom: 12,
+                    disableDefaultUI: true,
+                    zoomControl: true
+                });
+
+                mapLoader.classList.add('hide');
+                listenForUserLocations();
+            }
+
+            function listenForUserLocations() {
+                const usersRef = collection(db, "users");
+                const q = query(usersRef, orderBy("name"));
+
+                const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    state.trackingMarkers.forEach(marker => marker.setMap(null));
+                    state.trackingMarkers = [];
+
+                    const userListEl = document.getElementById('user-tracking-list');
+                    if (!userListEl) return;
+                    userListEl.innerHTML = '';
+
+                    const users = [];
+                    querySnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+
+                    if (users.length === 0) {
+                        userListEl.innerHTML = `<p class="text-center text-gray-500 p-2">沒有使用者可追蹤</p>`;
+                        return;
+                    }
+
+                    users.forEach(user => {
+                        const hasLocation = user.lastLocation && user.lastLocation.latitude;
+                        
+                        const userElement = document.createElement('div');
+                        userElement.className = `flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${!hasLocation ? 'opacity-50' : ''}`;
+                        userElement.innerHTML = `
+                            <div class="flex items-center">
+                                <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
+                                <div>
+                                    <p class="font-medium text-sm text-gray-800">${user.name}</p>
+                                    <p class="text-xs text-gray-500">${user.status || '未打卡'}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs text-gray-400">${user.lastClockInTime ? timeAgo(user.lastClockInTime.toDate()) : '無紀錄'}</span>
+                        `;
+                        userListEl.appendChild(userElement);
+
+                        if (hasLocation) {
+                            const position = { lat: user.lastLocation.latitude, lng: user.lastLocation.longitude };
+                            
+                            const marker = new google.maps.Marker({
+                                position,
+                                map: state.trackingMap,
+                                title: user.name,
+                                icon: {
+                                    url: user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${user.name.charAt(0)}`,
+                                    scaledSize: new google.maps.Size(36, 36),
+                                    anchor: new google.maps.Point(18, 18),
+                                    origin: new google.maps.Point(0, 0),
+                                }
+                            });
+
+                            const infoWindow = new google.maps.InfoWindow({
+                                content: `
+                                    <div class="p-1">
+                                        <p class="font-bold">${user.name}</p>
+                                        <p>狀態: ${user.status}</p>
+                                        <p>時間: ${user.lastClockInTime ? user.lastClockInTime.toDate().toLocaleTimeString('zh-TW') : 'N/A'}</p>
+                                    </div>
+                                `
+                            });
+
+                            marker.addListener('click', () => {
+                                infoWindow.open({
+                                    anchor: marker,
+                                    map: state.trackingMap,
+                                });
+                            });
+                            
+                            userElement.addEventListener('click', () => {
+                                state.trackingMap.panTo(position);
+                                state.trackingMap.setZoom(17);
+                                infoWindow.open({
+                                    anchor: marker,
+                                    map: state.trackingMap,
+                                });
+                            });
+
+                            state.trackingMarkers.push(marker);
+                        }
+                    });
+                });
+                state.activeListeners.push(unsubscribe);
+            }
+
 
             function renderSettings(subPage) {
                 mainContent.innerHTML = `
@@ -867,7 +981,6 @@
                     modal.remove();
                 });
                 
-                // 初始化地圖
                 if (window.google && window.google.maps) {
                     const mapDiv = document.getElementById('modal-map');
                     const map = new google.maps.Map(mapDiv, {
@@ -1451,23 +1564,15 @@
                         video.srcObject = stream;
                         document.getElementById('camera-loader').classList.add('hide');
                         
-                        // 初始化Lucide圖標
                         lucide.createIcons();
                         
-                        // 設置相機切換按鈕
-                        let currentFacingMode = "environment"; // 預設後鏡頭
+                        let currentFacingMode = "environment";
                         document.getElementById('switch-camera-btn').addEventListener('click', async () => {
-                            // 停止當前視訊流
                             stopCamera();
-                            
-                            // 顯示載入中
                             document.getElementById('camera-loader').classList.remove('hide');
-                            
-                            // 切換前後鏡頭
                             currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
                             
                             try {
-                                // 獲取新的視訊流
                                 const newStream = await navigator.mediaDevices.getUserMedia({ 
                                     video: { facingMode: currentFacingMode }, 
                                     audio: false 
@@ -1503,74 +1608,60 @@
                 });
                 
                 const saveAndPrepareNext = () => {
-                    try {
-                        // 確保canvas有內容
-                        if (!canvas || canvas.width === 0 || canvas.height === 0) {
-                            console.error("Canvas is empty or not properly initialized");
-                            showToast("照片處理失敗，請重試", true);
+                     canvas.toBlob(blob => {
+                        if (!blob) {
+                            showToast("照片處理失敗", true);
                             return;
                         }
-                        
-                        // Apply watermark and save
                         const description = descriptionInput.value;
-                        console.log("Applying watermark to canvas:", canvas.width, "x", canvas.height);
-                        const watermarkedBlob = applyWatermark(canvas, location, description);
+                        capturedPhotos.push({ blob, description });
                         
-                        if (!watermarkedBlob) {
-                            console.error("Failed to create blob from canvas");
-                            showToast("照片轉換失敗，請重試", true);
-                            return;
-                        }
-                        
-                        capturedPhotos.push({ blob: watermarkedBlob, description });
-                        console.log("Photo saved, total photos:", capturedPhotos.length);
-
-                        // Reset for next photo
                         descriptionInput.value = '';
                         cameraView.classList.remove('hide');
                         previewView.classList.add('hide');
                         captureControls.classList.remove('hide');
                         confirmControls.classList.add('hide');
                         showToast(`已儲存 ${capturedPhotos.length} 張照片`);
-                    } catch (error) {
-                        console.error("Error saving photo:", error);
-                        showToast("照片儲存失敗，請重試", true);
-                    }
+
+                     }, 'image/jpeg', 0.8);
                 };
 
                 document.getElementById('add-another-btn').addEventListener('click', saveAndPrepareNext);
 
                 document.getElementById('finish-btn').addEventListener('click', async () => {
-                    try {
-                        // 先儲存當前照片
-                        const description = descriptionInput.value;
-                        if (description || photoPreview.src.includes('data:image')) {
-                            saveAndPrepareNext();
-                        }
-                        
-                        // 檢查是否有成功儲存的照片
-                        if (capturedPhotos.length === 0) {
-                            showToast("必須至少拍攝一張照片才能打卡", true);
-                            return;
-                        }
-                        
-                        stopCamera();
-                        showLoading(true);
-
-                        // 由於CORS限制，我們將直接儲存打卡記錄，不上傳照片
-                        // 這是一個臨時解決方案，實際應用中應配置Firebase Storage的CORS設定
-                        console.log("跳過照片上傳，直接儲存打卡記錄");
-                        
-                        const photoUrls = [];
-                        const descriptions = [];
-                        
-                        // 將照片描述保存下來，但不上傳照片
-                        for (const photo of capturedPhotos) {
-                            if (photo.description) {
-                                descriptions.push(photo.description);
+                    if (previewView.classList.contains('hide') === false) {
+                         canvas.toBlob(async (blob) => {
+                            if (blob) {
+                                const description = descriptionInput.value;
+                                capturedPhotos.push({ blob, description });
                             }
-                        }
+                            await completeClockIn();
+                         }, 'image/jpeg', 0.8);
+                    } else {
+                        await completeClockIn();
+                    }
+                });
 
+                const completeClockIn = async () => {
+                     if (capturedPhotos.length === 0) {
+                        showToast("必須至少拍攝一張照片才能打卡", true);
+                        return;
+                    }
+                    stopCamera();
+                    showLoading(true);
+
+                    const photoUrls = [];
+                    const descriptions = [];
+
+                    for (const photo of capturedPhotos) {
+                         const storageRef = ref(storage, `clockInPhotos/${state.currentUser.uid}/${Date.now()}.jpg`);
+                         await uploadBytes(storageRef, photo.blob);
+                         const downloadURL = await getDownloadURL(storageRef);
+                         photoUrls.push(downloadURL);
+                         descriptions.push(photo.description);
+                    }
+
+                    try {
                         await addDoc(collection(db, "clockInRecords"), {
                             userId: state.currentUser.uid,
                             type: type,
@@ -1582,7 +1673,8 @@
 
                         await updateDoc(doc(db, "users", state.currentUser.uid), {
                             status: type,
-                            lastClockInTime: serverTimestamp()
+                            lastClockInTime: serverTimestamp(),
+                            lastLocation: new GeoPoint(location.lat, location.lng)
                         });
 
                         showToast(`${type}打卡成功！`);
@@ -1594,80 +1686,25 @@
                     } finally {
                         showLoading(false);
                     }
-                });
+                };
 
                 document.getElementById('cancel-camera-btn').addEventListener('click', close);
-            }
-
-            function applyWatermark(canvas, location, description) {
-                try {
-                    const context = canvas.getContext('2d');
-                    const now = new Date();
-                    const dateTime = now.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    const name = state.currentUserData?.name || '使用者';
-                    const coords = location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : '無位置資訊';
-                    
-                    const lines = [dateTime, name, `GPS: ${coords}`];
-                    if(description) lines.push(`說明: ${description}`);
-
-                    context.font = '24px Arial';
-                    context.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                    const margin = 20;
-                    let y = canvas.height - margin - (lines.length - 1) * 30;
-
-                    for (const line of lines) {
-                        context.fillText(line, margin, y);
-                        y += 30;
-                    }
-                    
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                    return dataURItoBlob(dataUrl);
-                } catch (error) {
-                    console.error("Error applying watermark:", error);
-                    return null;
-                }
-            }
-
-            function dataURItoBlob(dataURI) {
-                try {
-                    if (!dataURI || typeof dataURI !== 'string' || !dataURI.includes(',')) {
-                        console.error("Invalid dataURI format");
-                        return null;
-                    }
-                    
-                    const byteString = atob(dataURI.split(',')[1]);
-                    const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
-                    const ab = new ArrayBuffer(byteString.length);
-                    const ia = new Uint8Array(ab);
-                    
-                    for (let i = 0; i < byteString.length; i++) {
-                        ia[i] = byteString.charCodeAt(i);
-                    }
-                    
-                    return new Blob([ab], { type: mimeString });
-                } catch (error) {
-                    console.error("Error converting dataURI to Blob:", error);
-                    return null;
-                }
             }
 
             // --- Google Maps ---
             function loadGoogleMapsScript() {
                 if (window.google && state.googleMapsLoaded) return;
                 
-                // 先設置回調函數
                 window.initMap = () => { 
                     state.googleMapsLoaded = true; 
                     console.log("Google Maps API 已成功加載");
                 };
                 
-                // 然後加載腳本
                 const script = document.createElement('script');
                 script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&v=weekly`;
                 script.async = true;
                 script.defer = true;
                 
-                // 添加錯誤處理
                 script.onerror = () => {
                     console.error("Google Maps API 加載失敗");
                     showToast("地圖服務加載失敗，請檢查網絡連接或API金鑰", true);
@@ -1695,20 +1732,19 @@
                 }, 3000);
             }
 
-            async function fetchAllUsers() {
-                try {
-                    const usersRef = collection(db, "users");
-                    const q = query(usersRef);
-                    const querySnapshot = await getDocs(q);
-                    state.users = [];
-                    querySnapshot.forEach((doc) => {
-                        state.users.push({ id: doc.id, ...doc.data() });
-                    });
-                    state.users.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant'));
-                } catch (error) {
-                    console.error("Error fetching users:", error);
-                    showToast("讀取使用者列表失敗", true);
-                }
+            function timeAgo(date) {
+                const seconds = Math.floor((new Date() - date) / 1000);
+                let interval = seconds / 31536000;
+                if (interval > 1) return Math.floor(interval) + " 年前";
+                interval = seconds / 2592000;
+                if (interval > 1) return Math.floor(interval) + " 月前";
+                interval = seconds / 86400;
+                if (interval > 1) return Math.floor(interval) + " 天前";
+                interval = seconds / 3600;
+                if (interval > 1) return Math.floor(interval) + " 小時前";
+                interval = seconds / 60;
+                if (interval > 1) return Math.floor(interval) + " 分鐘前";
+                return "剛剛";
             }
             
             function formatDate(timestamp) {
