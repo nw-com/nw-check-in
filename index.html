@@ -162,7 +162,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.4.8</p>
+            <p class="text-gray-500">雲端測試版V1.3.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -1437,15 +1437,15 @@
                                 <!-- 目前上班狀態 -->
                                 <div class="border-t pt-4">
                                     <h4 class="font-semibold mb-2">目前上班狀態</h4>
-                                    <div id="profile-status" class="p-3 rounded-lg text-center bg-gray-100 text-gray-800">
-                                        讀取中...
+                                    <div id="profile-status" class="p-3 rounded-lg text-center bg-gray-100 text-gray-800 font-bold">
+                                        ${state.clockInStatus ? getStatusDisplayText(state.clockInStatus, state.outboundLocation) : '尚未打卡'}
                                     </div>
                                 </div>
                                 
                                 <!-- 獎懲點數 -->
                                 <div class="border-t pt-4">
                                     <h4 class="font-semibold mb-2">獎懲點數</h4>
-                                    <p class="text-center text-2xl font-bold">${state.currentUserData.points || 0} 點</p>
+                                    <p class="text-center text-3xl font-bold">${state.currentUserData.points || 0} 點</p>
                                 </div>
                                 
                                 <!-- 請假資訊 -->
@@ -1485,7 +1485,11 @@
                         const timestamp = new Date().getTime();
                         const fileName = `avatar_${timestamp}.jpg`;
                         const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${fileName}`);
-                        await uploadBytes(storageRef, file);
+                        
+                        // 壓縮圖片以確保上傳成功
+                        const compressedFile = await compressImage(file, 800);
+                        
+                        await uploadBytes(storageRef, compressedFile);
                         const downloadURL = await getDownloadURL(storageRef);
                         
                         // 更新用戶文檔
@@ -1496,18 +1500,53 @@
                         // 更新當前用戶數據
                         state.currentUserData.avatarUrl = downloadURL;
                         
-                        // 更新界面
-                        document.getElementById('modal-avatar').src = downloadURL;
-                        document.getElementById('header-avatar').src = downloadURL;
+                        // 更新界面 - 添加時間戳以避免緩存問題
+                        const cachedUrl = `${downloadURL}?t=${timestamp}`;
+                        document.getElementById('modal-avatar').src = cachedUrl;
+                        document.getElementById('header-avatar').src = cachedUrl;
                         
                         showToast("頭像更新成功");
                     } catch (error) {
                         console.error("Avatar upload error:", error);
-                        showToast("頭像上傳失敗，請檢查Firebase規則", true);
+                        showToast("頭像上傳失敗: " + error.message, true);
                     } finally {
                         showLoading(false);
                     }
                 });
+                
+                // 壓縮圖片函數
+                async function compressImage(file, maxWidth) {
+                    return new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = (event) => {
+                            const img = new Image();
+                            img.src = event.target.result;
+                            img.onload = () => {
+                                const canvas = document.createElement('canvas');
+                                let width = img.width;
+                                let height = img.height;
+                                
+                                if (width > maxWidth) {
+                                    height = Math.round((height * maxWidth) / width);
+                                    width = maxWidth;
+                                }
+                                
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                
+                                canvas.toBlob((blob) => {
+                                    resolve(new File([blob], file.name, {
+                                        type: 'image/jpeg',
+                                        lastModified: Date.now()
+                                    }));
+                                }, 'image/jpeg', 0.7);
+                            };
+                        };
+                    });
+                }
 
                 logoutBtn.addEventListener('click', async () => {
                     close();
@@ -1872,5 +1911,4 @@
         });
     </script>
 </body>
-
 </html>
