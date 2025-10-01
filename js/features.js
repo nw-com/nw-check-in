@@ -1,5 +1,6 @@
 // 功能分頁渲染函數
 function renderFeatures(subPage) {
+    const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
         <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
             <button data-subtab="news" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'news' ? 'active' : ''}">最新消息</button>
@@ -20,7 +21,15 @@ function renderFeatures(subPage) {
         renderFeaturesDownloads(subPageContent);
     }
     
-    mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('features', btn.dataset.subtab)));
+    mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (typeof showPage === 'function') {
+                showPage('features', btn.dataset.subtab);
+            } else {
+                console.error('showPage function is not defined');
+            }
+        });
+    });
 }
 
 // 功能分頁 - 最新消息子分頁
@@ -33,7 +42,9 @@ function renderFeaturesNews(container) {
                 <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
             </div>
         </div>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
 
 // 功能分頁 - 聯絡簿子分頁
@@ -46,7 +57,9 @@ function renderFeaturesContacts(container) {
                 <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
             </div>
         </div>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
 
 // 功能分頁 - 教育訓練子分頁
@@ -59,7 +72,9 @@ function renderFeaturesTraining(container) {
                 <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
             </div>
         </div>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
 
 // 功能分頁 - 文件下載子分頁
@@ -72,5 +87,7 @@ function renderFeaturesDownloads(container) {
                 <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
             </div>
         </div>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
