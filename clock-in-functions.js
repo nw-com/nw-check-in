@@ -1,484 +1,549 @@
 // 打卡功能相關函數
 
+// 確保state對象存在
+if (typeof state === 'undefined') {
+    window.state = {};
+}
+
+// 設置打卡狀態屬性
+if (typeof state.clockInStatus === 'undefined') {
+    state.clockInStatus = 'none';
+}
+
 // 更新狀態顯示
 function updateStatusDisplay() {
-    const statusText = document.getElementById('status-text');
-    if (!statusText) {
-        // 創建狀態顯示區域
-        const clockInContainer = document.querySelector('.clock-in-container');
-        if (clockInContainer) {
-            const statusDiv = document.createElement('div');
-            statusDiv.id = 'status-display';
-            statusDiv.className = 'text-center py-2 font-semibold text-lg rounded-lg mb-4';
-            
-            const statusTextSpan = document.createElement('span');
-            statusTextSpan.id = 'status-text';
-            statusTextSpan.textContent = '尚未打卡';
-            statusTextSpan.className = 'text-gray-700';
-            
-            statusDiv.appendChild(statusTextSpan);
-            statusDiv.style.backgroundColor = '#f3f4f6'; // gray-100
-            
-            // 插入到按鈕區域之前
-            const buttonContainer = document.querySelector('.clock-in-buttons');
-            if (buttonContainer) {
-                clockInContainer.insertBefore(statusDiv, buttonContainer);
-            } else {
-                clockInContainer.appendChild(statusDiv);
+    // 檢查狀態顯示區域是否存在，如果不存在則創建
+    let statusDisplay = document.getElementById('status-display');
+    if (!statusDisplay) {
+        const clockInContainer = document.getElementById('clock-in-container');
+        const clockInButtons = document.getElementById('clock-in-buttons');
+        
+        if (!clockInContainer || !clockInButtons) return;
+        
+        statusDisplay = document.createElement('div');
+        statusDisplay.id = 'status-display';
+        statusDisplay.className = 'mb-4 p-3 rounded-lg text-center';
+        
+        const statusText = document.createElement('span');
+        statusText.id = 'status-text';
+        statusText.textContent = '尚未打卡';
+        statusDisplay.appendChild(statusText);
+        
+        clockInContainer.insertBefore(statusDisplay, clockInButtons);
+    } else {
+        const statusText = document.getElementById('status-text');
+        if (statusText) {
+            // 根據狀態更新顯示
+            switch(state.clockInStatus) {
+                case '上班':
+                    statusText.textContent = '在辦公室';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
+                    break;
+                case '下班':
+                    statusText.textContent = '已下班';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
+                    break;
+                case '外出':
+                    statusText.textContent = '外出中';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
+                    break;
+                case '抵達':
+                    statusText.textContent = '抵達';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
+                    break;
+                case '離開':
+                    statusText.textContent = '離開';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
+                    break;
+                case '返回':
+                    statusText.textContent = '返回辦公室';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
+                    break;
+                default:
+                    statusText.textContent = '尚未打卡';
+                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
             }
         }
+    }
+}
+
+// 初始化打卡按鈕狀態
+function initClockInButtonStatus() {
+    // 檢查用戶是否已登入
+    if (!firebase.auth().currentUser) {
+        console.log("用戶尚未登入，無法初始化打卡按鈕");
+        setTimeout(initClockInButtonStatus, 1000); // 延遲重試
         return;
     }
     
-    // 根據當前狀態更新顯示
-    switch (state.clockInStatus) {
-        case '上班':
-            statusText.textContent = '在辦公室';
-            statusText.className = 'text-green-600';
-            break;
-        case '下班':
-            statusText.textContent = '已下班';
-            statusText.className = 'text-gray-600';
-            break;
-        case '外出':
-            statusText.textContent = `外出中 ${state.outboundLocation ? '- ' + state.outboundLocation : ''}`;
-            statusText.className = 'text-blue-600';
-            break;
-        case '抵達':
-            statusText.textContent = `抵達 ${state.outboundLocation ? state.outboundLocation : ''}`;
-            statusText.className = 'text-purple-600';
-            break;
-        case '離開':
-            statusText.textContent = `離開 ${state.outboundLocation ? state.outboundLocation : ''}`;
-            statusText.className = 'text-yellow-600';
-            break;
-        case '返回':
-            statusText.textContent = '返回辦公室';
-            statusText.className = 'text-teal-600';
-            break;
-        default:
-            statusText.textContent = '尚未打卡';
-            statusText.className = 'text-gray-700';
-    }
-}
-
-function initClockInButtonStatus() {
-    // 獲取用戶最後的打卡狀態
-    const userRef = doc(db, "users", state.currentUser.uid);
-    getDoc(userRef).then((docSnap) => {
-        if (docSnap.exists()) {
-            const userData = docSnap.data();
-            state.clockInStatus = userData.status || 'none';
-            state.outboundLocation = userData.outboundLocation || null;
-            
-            // 根據狀態啟用/禁用按鈕
-            updateButtonStatus();
-            
-            // 更新狀態顯示
-            updateStatusDisplay();
-        } else {
-            // 用戶資料不存在，設置默認狀態
-            state.clockInStatus = 'none';
-            state.outboundLocation = null;
-            updateButtonStatus();
-            updateStatusDisplay();
-        }
-    }).catch(error => {
-        console.error("獲取用戶狀態失敗:", error);
-        showToast("獲取用戶狀態失敗", "error");
-    });
-}
-
-// 根據當前狀態更新按鈕狀態
-function updateButtonStatus() {
-    // 先禁用所有按鈕
-    document.querySelectorAll('.clock-in-btn').forEach(btn => {
-        btn.disabled = true;
-        btn.classList.remove('bg-red-600', 'bg-blue-600', 'bg-green-600', 'bg-yellow-600', 'bg-purple-600', 'bg-pink-600');
-        btn.classList.add('bg-gray-400');
+    // 獲取當前用戶ID
+    const userId = firebase.auth().currentUser.uid;
+    
+    // 禁用所有按鈕，等待狀態確認
+    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
+        button.disabled = true;
+        button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        button.classList.add('bg-gray-300', 'cursor-not-allowed');
     });
     
-    // 根據狀態啟用相應按鈕
-    switch (state.clockInStatus) {
-        case 'none': // 尚未打卡
+    // 從Firestore獲取用戶最後的打卡狀態
+    firebase.firestore().collection('users').doc(userId).get().then(doc => {
+        if (doc.exists && doc.data().clockInStatus) {
+            // 設置全局狀態
+            state.clockInStatus = doc.data().clockInStatus;
+            state.outboundLocation = doc.data().outboundLocation || null;
+            
+            // 更新按鈕狀態
+            updateButtonStatus();
+        } else {
+            // 新用戶，只啟用上班打卡
+            state.clockInStatus = 'none';
+            state.outboundLocation = null;
+            enableOnlyButton('上班');
+        }
+        
+        // 更新狀態顯示
+        updateStatusDisplay();
+    }).catch(error => {
+        console.error("獲取用戶狀態失敗:", error);
+        showToast("獲取用戶狀態失敗，請重新整理頁面", true);
+    });
+}
+
+// 更新按鈕狀態
+function updateButtonStatus() {
+    // 先禁用所有按鈕
+    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
+        button.disabled = true;
+        button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        button.classList.add('bg-gray-300', 'cursor-not-allowed');
+    });
+    
+    // 根據當前狀態啟用相應按鈕
+    switch(state.clockInStatus) {
+        case 'none':
+            // 尚未打卡，只啟用上班按鈕
             enableOnlyButton('上班');
             break;
-        case '上班': // 在辦公室
+        case '上班':
+            // 已上班，啟用下班和外出按鈕
             enableButton('下班');
             enableButton('外出');
             enableButton('臨時請假');
             enableButton('特殊勤務');
-            
-            // 設置上班打卡按鈕顏色
-            const clockInBtn = document.querySelector('.clock-in-btn[data-type="上班"]');
-            if (clockInBtn) {
-                clockInBtn.classList.remove('bg-gray-400');
-                clockInBtn.classList.add('bg-green-600');
-            }
             break;
-        case '下班': // 已下班
+        case '下班':
+            // 已下班，只啟用上班按鈕
             enableOnlyButton('上班');
-            
-            // 設置下班打卡按鈕顏色
-            const clockOutBtn = document.querySelector('.clock-in-btn[data-type="下班"]');
-            if (clockOutBtn) {
-                clockOutBtn.classList.remove('bg-gray-400');
-                clockOutBtn.classList.add('bg-blue-600');
-            }
             break;
-        case '外出': // 外出中
+        case '外出':
+            // 外出中，啟用抵達按鈕
             enableOnlyButton('抵達');
-            
-            // 設置外出打卡按鈕顏色
-            const outBtn = document.querySelector('.clock-in-btn[data-type="外出"]');
-            if (outBtn) {
-                outBtn.classList.remove('bg-gray-400');
-                outBtn.classList.add('bg-yellow-600');
-            }
             break;
-        case '抵達': // 抵達外出地點
+        case '抵達':
+            // 已抵達，啟用離開按鈕
             enableOnlyButton('離開');
-            
-            // 設置抵達打卡按鈕顏色
-            const arriveBtn = document.querySelector('.clock-in-btn[data-type="抵達"]');
-            if (arriveBtn) {
-                arriveBtn.classList.remove('bg-gray-400');
-                arriveBtn.classList.add('bg-purple-600');
-            }
             break;
-        case '離開': // 離開外出地點
-            enableOnlyButton('外出');
-            
-            // 設置離開打卡按鈕顏色
-            const leaveBtn = document.querySelector('.clock-in-btn[data-type="離開"]');
-            if (leaveBtn) {
-                leaveBtn.classList.remove('bg-gray-400');
-                leaveBtn.classList.add('bg-pink-600');
-            }
+        case '離開':
+            // 已離開，啟用返回按鈕
+            enableOnlyButton('返回');
             break;
-        case '返回': // 返回辦公室
+        case '返回':
+            // 已返回，啟用下班和外出按鈕
             enableButton('下班');
             enableButton('外出');
             enableButton('臨時請假');
             enableButton('特殊勤務');
-            
-            // 設置返回打卡按鈕顏色
-            const returnBtn = document.querySelector('.clock-in-btn[data-type="返回"]');
-            if (returnBtn) {
-                returnBtn.classList.remove('bg-gray-400');
-                returnBtn.classList.add('bg-green-600');
-            }
             break;
+        default:
+            // 未知狀態，只啟用上班按鈕
+            enableOnlyButton('上班');
     }
 }
 
 // 啟用指定按鈕
-function enableButton(type) {
-    const button = document.querySelector(`.clock-in-btn[data-type="${type}"]`);
+function enableButton(buttonText) {
+    const button = Array.from(document.querySelectorAll('#clock-in-buttons button')).find(btn => btn.textContent.trim() === buttonText);
     if (button) {
         button.disabled = false;
-        button.classList.remove('bg-gray-400');
-        button.classList.add('bg-red-600');
+        button.classList.remove('bg-gray-300', 'cursor-not-allowed');
+        button.classList.add('bg-blue-500', 'hover:bg-blue-600');
     }
 }
 
-// 只啟用指定按鈕
-function enableOnlyButton(type) {
-    document.querySelectorAll('.clock-in-btn').forEach(btn => {
-        btn.disabled = true;
-        btn.classList.remove('bg-red-600', 'bg-blue-600', 'bg-green-600', 'bg-yellow-600', 'bg-purple-600', 'bg-pink-600');
-        btn.classList.add('bg-gray-400');
+// 只啟用指定按鈕，禁用其他所有按鈕
+function enableOnlyButton(buttonText) {
+    document.querySelectorAll('#clock-in-buttons button').forEach(button => {
+        if (button.textContent.trim() === buttonText) {
+            button.disabled = false;
+            button.classList.remove('bg-gray-300', 'cursor-not-allowed');
+            button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        } else {
+            button.disabled = true;
+            button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+            button.classList.add('bg-gray-300', 'cursor-not-allowed');
+        }
     });
-    
-    const button = document.querySelector(`.clock-in-btn[data-type="${type}"]`);
-    if (button) {
-        button.disabled = false;
-        button.classList.remove('bg-gray-400');
-        button.classList.add('bg-red-600');
-    }
 }
 
-// 外出地點輸入彈窗
+// 打開外出地點輸入彈窗
 function openLocationInputModal() {
-    // 創建模態框
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop flex items-center justify-center';
-    modal.id = 'location-input-modal';
+    const modal = document.getElementById('location-input-modal');
+    const backdrop = document.getElementById('modal-backdrop');
+    const locationInput = document.getElementById('outbound-location');
     
-    const modalContent = document.createElement('div');
-    modalContent.className = 'modal-content p-6 max-w-md';
-    
-    modalContent.innerHTML = `
-        <h3 class="text-xl font-semibold mb-4">請輸入外出地點</h3>
-        <input type="text" id="outbound-location" class="w-full p-2 border rounded mb-4" placeholder="請輸入外出地點">
-        <div class="flex justify-end space-x-2">
-            <button id="cancel-location" class="px-4 py-2 bg-gray-300 rounded">取消</button>
-            <button id="confirm-location" class="px-4 py-2 bg-red-600 text-white rounded">確認</button>
-        </div>
-    `;
-    
-    modal.appendChild(modalContent);
-    document.body.appendChild(modal);
-    
-    // 聚焦輸入框
-    setTimeout(() => {
-        document.getElementById('outbound-location').focus();
-    }, 100);
-    
-    // 綁定事件
-    document.getElementById('cancel-location').addEventListener('click', () => {
-        document.body.removeChild(modal);
-    });
-    
-    document.getElementById('confirm-location').addEventListener('click', () => {
-        const location = document.getElementById('outbound-location').value.trim();
-        if (!location) {
-            showToast('請輸入外出地點', 'error');
-            return;
-        }
-        
-        // 保存外出地點
-        state.outboundLocation = location;
-        
-        // 關閉模態框
-        document.body.removeChild(modal);
-        
-        // 打開相機模態框
-        openCameraModal('外出', location);
-    });
-}
-
-// 臨時請假彈窗
-function openTempLeaveModal() {
-    // 創建模態框
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop flex items-center justify-center';
-    modal.id = 'temp-leave-modal';
-    
-    const modalContent = document.createElement('div');
-    modalContent.className = 'modal-content p-6 max-w-md';
-    
-    modalContent.innerHTML = `
-        <h3 class="text-xl font-semibold mb-4">臨時請假</h3>
-        <div class="mb-4">
-            <label class="block mb-2">請假事由</label>
-            <select id="leave-reason" class="w-full p-2 border rounded">
-                <option value="">請選擇請假事由</option>
-                <option value="病假">病假</option>
-                <option value="事假">事假</option>
-                <option value="其他">其他</option>
-            </select>
-            <div id="other-reason-container" class="mt-2 hidden">
-                <input type="text" id="other-reason" class="w-full p-2 border rounded" placeholder="請輸入其他事由">
-            </div>
-        </div>
-        <div class="mb-4">
-            <label class="block mb-2">請假時間</label>
-            <div class="flex space-x-2">
-                <input type="datetime-local" id="leave-start-time" class="flex-1 p-2 border rounded">
-                <span class="self-center">至</span>
-                <input type="datetime-local" id="leave-end-time" class="flex-1 p-2 border rounded">
-            </div>
-        </div>
-        <div class="flex justify-end space-x-2">
-            <button id="cancel-leave" class="px-4 py-2 bg-gray-300 rounded">取消</button>
-            <button id="confirm-leave" class="px-4 py-2 bg-red-600 text-white rounded">確認</button>
-        </div>
-    `;
-    
-    modal.appendChild(modalContent);
-    document.body.appendChild(modal);
-    
-    // 設置默認時間
-    const now = new Date();
-    const startTime = new Date(now);
-    const endTime = new Date(now);
-    endTime.setHours(endTime.getHours() + 2); // 默認請假2小時
-    
-    document.getElementById('leave-start-time').value = formatDatetimeLocal(startTime);
-    document.getElementById('leave-end-time').value = formatDatetimeLocal(endTime);
-    
-    // 綁定事件
-    document.getElementById('leave-reason').addEventListener('change', (e) => {
-        const otherContainer = document.getElementById('other-reason-container');
-        if (e.target.value === '其他') {
-            otherContainer.classList.remove('hidden');
-        } else {
-            otherContainer.classList.add('hidden');
-        }
-    });
-    
-    document.getElementById('cancel-leave').addEventListener('click', () => {
-        document.body.removeChild(modal);
-    });
-    
-    document.getElementById('confirm-leave').addEventListener('click', () => {
-        const reasonSelect = document.getElementById('leave-reason');
-        let reason = reasonSelect.value;
-        
-        if (!reason) {
-            showToast('請選擇請假事由', 'error');
-            return;
-        }
-        
-        if (reason === '其他') {
-            const otherReason = document.getElementById('other-reason').value.trim();
-            if (!otherReason) {
-                showToast('請輸入其他事由', 'error');
-                return;
-            }
-            reason = otherReason;
-        }
-        
-        const startTime = document.getElementById('leave-start-time').value;
-        const endTime = document.getElementById('leave-end-time').value;
-        
-        if (!startTime || !endTime) {
-            showToast('請選擇請假時間', 'error');
-            return;
-        }
-        
-        if (new Date(startTime) >= new Date(endTime)) {
-            showToast('結束時間必須晚於開始時間', 'error');
-            return;
-        }
-        
-        // 保存臨時請假記錄
-        saveLeaveRecord(reason, startTime, endTime);
-        
-        // 關閉模態框
-        document.body.removeChild(modal);
-    });
-}
-
-// 特殊勤務彈窗
-function openSpecialDutyModal() {
-    // 創建模態框
-    const modal = document.createElement('div');
-    modal.className = 'modal-backdrop flex items-center justify-center';
-    modal.id = 'special-duty-modal';
-    
-    const modalContent = document.createElement('div');
-    modalContent.className = 'modal-content p-6 max-w-md';
-    
-    modalContent.innerHTML = `
-        <h3 class="text-xl font-semibold mb-4">特殊勤務</h3>
-        <div class="mb-4">
-            <label class="block mb-2">勤務事項</label>
-            <select id="duty-type" class="w-full p-2 border rounded">
-                <option value="">請選擇勤務事項</option>
-                <option value="簡報">簡報</option>
-                <option value="例會">例會</option>
-                <option value="區大">區大</option>
-                <option value="臨時會">臨時會</option>
-                <option value="其他活動">其他活動</option>
-                <option value="其他">其他</option>
-            </select>
-            <div id="other-duty-container" class="mt-2 hidden">
-                <input type="text" id="other-duty" class="w-full p-2 border rounded" placeholder="請輸入其他勤務事項">
-            </div>
-        </div>
-        <div class="flex justify-end space-x-2">
-            <button id="cancel-duty" class="px-4 py-2 bg-gray-300 rounded">取消</button>
-            <button id="confirm-duty" class="px-4 py-2 bg-red-600 text-white rounded">確認</button>
-        </div>
-    `;
-    
-    modal.appendChild(modalContent);
-    document.body.appendChild(modal);
-    
-    // 綁定事件
-    document.getElementById('duty-type').addEventListener('change', (e) => {
-        const otherContainer = document.getElementById('other-duty-container');
-        if (e.target.value === '其他') {
-            otherContainer.classList.remove('hidden');
-        } else {
-            otherContainer.classList.add('hidden');
-        }
-    });
-    
-    document.getElementById('cancel-duty').addEventListener('click', () => {
-        document.body.removeChild(modal);
-    });
-    
-    document.getElementById('confirm-duty').addEventListener('click', () => {
-        const dutySelect = document.getElementById('duty-type');
-        let duty = dutySelect.value;
-        
-        if (!duty) {
-            showToast('請選擇勤務事項', 'error');
-            return;
-        }
-        
-        if (duty === '其他') {
-            const otherDuty = document.getElementById('other-duty').value.trim();
-            if (!otherDuty) {
-                showToast('請輸入其他勤務事項', 'error');
-                return;
-            }
-            duty = otherDuty;
-        }
-        
-        // 保存特殊勤務記錄
-        saveDutyRecord(duty);
-        
-        // 關閉模態框
-        document.body.removeChild(modal);
-    });
-}
-
-// 保存臨時請假記錄
-async function saveLeaveRecord(reason, startTime, endTime) {
-    try {
-        const auth = firebase.auth().currentUser;
-        if (!auth) {
-            showToast('請先登入', 'error');
-            return;
-        }
-        
-        const userId = auth.uid;
-        const db = firebase.firestore();
-        
-        // 保存請假記錄
-        await addDoc(collection(db, 'leave_records'), {
-            userId,
-            reason,
-            startTime: new Date(startTime),
-            endTime: new Date(endTime),
-            timestamp: serverTimestamp()
-        });
-        
-        showToast('臨時請假申請已提交', 'success');
-    } catch (error) {
-        console.error('保存臨時請假記錄失敗:', error);
-        showToast('臨時請假申請失敗', 'error');
+    if (!modal || !backdrop || !locationInput) {
+        // 如果元素不存在，創建彈窗
+        createLocationInputModal();
+        return;
     }
+    
+    // 清空輸入框
+    locationInput.value = '';
+    
+    // 顯示彈窗
+    modal.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+}
+
+// 創建外出地點輸入彈窗
+function createLocationInputModal() {
+    // 創建背景
+    const backdrop = document.createElement('div');
+    backdrop.id = 'modal-backdrop';
+    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+    backdrop.addEventListener('click', closeAllModals);
+    
+    // 創建彈窗
+    const modal = document.createElement('div');
+    modal.id = 'location-input-modal';
+    modal.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 z-50 w-80';
+    
+    // 創建標題
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-semibold mb-4';
+    title.textContent = '請輸入外出地點';
+    
+    // 創建輸入框
+    const input = document.createElement('input');
+    input.id = 'outbound-location';
+    input.type = 'text';
+    input.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    input.placeholder = '例如：客戶公司、醫院等';
+    
+    // 創建按鈕容器
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex justify-end space-x-2';
+    
+    // 創建取消按鈕
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300';
+    cancelButton.textContent = '取消';
+    cancelButton.addEventListener('click', closeAllModals);
+    
+    // 創建確認按鈕
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600';
+    confirmButton.textContent = '確認';
+    confirmButton.addEventListener('click', () => {
+        const location = document.getElementById('outbound-location').value.trim();
+        if (location) {
+            state.outboundLocation = location;
+            closeAllModals();
+            openCameraModal('外出');
+        } else {
+            showToast('請輸入外出地點', true);
+        }
+    });
+    
+    // 組裝彈窗
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(confirmButton);
+    modal.appendChild(title);
+    modal.appendChild(input);
+    modal.appendChild(buttonContainer);
+    
+    // 添加到頁面
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+}
+
+// 打開臨時請假彈窗
+function openTempLeaveModal() {
+    const modal = document.getElementById('temp-leave-modal');
+    const backdrop = document.getElementById('modal-backdrop');
+    
+    if (!modal || !backdrop) {
+        // 如果元素不存在，創建彈窗
+        createTempLeaveModal();
+        return;
+    }
+    
+    // 清空輸入框
+    document.getElementById('leave-reason').value = '';
+    document.getElementById('leave-time').value = '';
+    
+    // 顯示彈窗
+    modal.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+}
+
+// 創建臨時請假彈窗
+function createTempLeaveModal() {
+    // 創建背景
+    const backdrop = document.createElement('div');
+    backdrop.id = 'modal-backdrop';
+    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+    backdrop.addEventListener('click', closeAllModals);
+    
+    // 創建彈窗
+    const modal = document.createElement('div');
+    modal.id = 'temp-leave-modal';
+    modal.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 z-50 w-80';
+    
+    // 創建標題
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-semibold mb-4';
+    title.textContent = '臨時請假';
+    
+    // 創建事由輸入框
+    const reasonLabel = document.createElement('label');
+    reasonLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    reasonLabel.textContent = '請假事由';
+    
+    const reasonInput = document.createElement('input');
+    reasonInput.id = 'leave-reason';
+    reasonInput.type = 'text';
+    reasonInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    reasonInput.placeholder = '例如：看醫生、家庭事務等';
+    
+    // 創建時間輸入框
+    const timeLabel = document.createElement('label');
+    timeLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    timeLabel.textContent = '預計返回時間';
+    
+    const timeInput = document.createElement('input');
+    timeInput.id = 'leave-time';
+    timeInput.type = 'datetime-local';
+    timeInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    timeInput.value = formatDatetimeLocal(new Date(Date.now() + 3600000)); // 預設一小時後
+    
+    // 創建按鈕容器
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex justify-end space-x-2';
+    
+    // 創建取消按鈕
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300';
+    cancelButton.textContent = '取消';
+    cancelButton.addEventListener('click', closeAllModals);
+    
+    // 創建確認按鈕
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600';
+    confirmButton.textContent = '確認';
+    confirmButton.addEventListener('click', () => {
+        const reason = document.getElementById('leave-reason').value.trim();
+        const time = document.getElementById('leave-time').value;
+        
+        if (reason && time) {
+            saveLeaveRecord(reason, time);
+            closeAllModals();
+        } else {
+            showToast('請填寫完整資訊', true);
+        }
+    });
+    
+    // 組裝彈窗
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(confirmButton);
+    modal.appendChild(title);
+    modal.appendChild(reasonLabel);
+    modal.appendChild(reasonInput);
+    modal.appendChild(timeLabel);
+    modal.appendChild(timeInput);
+    modal.appendChild(buttonContainer);
+    
+    // 添加到頁面
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+}
+
+// 打開特殊勤務彈窗
+function openSpecialDutyModal() {
+    const modal = document.getElementById('special-duty-modal');
+    const backdrop = document.getElementById('modal-backdrop');
+    
+    if (!modal || !backdrop) {
+        // 如果元素不存在，創建彈窗
+        createSpecialDutyModal();
+        return;
+    }
+    
+    // 清空輸入框
+    document.getElementById('duty-type').value = '';
+    
+    // 顯示彈窗
+    modal.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+}
+
+// 創建特殊勤務彈窗
+function createSpecialDutyModal() {
+    // 創建背景
+    const backdrop = document.createElement('div');
+    backdrop.id = 'modal-backdrop';
+    backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+    backdrop.addEventListener('click', closeAllModals);
+    
+    // 創建彈窗
+    const modal = document.createElement('div');
+    modal.id = 'special-duty-modal';
+    modal.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 z-50 w-80';
+    
+    // 創建標題
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-semibold mb-4';
+    title.textContent = '特殊勤務';
+    
+    // 創建勤務類型輸入框
+    const typeLabel = document.createElement('label');
+    typeLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+    typeLabel.textContent = '勤務類型';
+    
+    const typeInput = document.createElement('input');
+    typeInput.id = 'duty-type';
+    typeInput.type = 'text';
+    typeInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    typeInput.placeholder = '例如：加班、值班等';
+    
+    // 創建按鈕容器
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'flex justify-end space-x-2';
+    
+    // 創建取消按鈕
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300';
+    cancelButton.textContent = '取消';
+    cancelButton.addEventListener('click', closeAllModals);
+    
+    // 創建確認按鈕
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600';
+    confirmButton.textContent = '確認';
+    confirmButton.addEventListener('click', () => {
+        const dutyType = document.getElementById('duty-type').value.trim();
+        
+        if (dutyType) {
+            saveDutyRecord(dutyType);
+            closeAllModals();
+        } else {
+            showToast('請填寫勤務類型', true);
+        }
+    });
+    
+    // 組裝彈窗
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(confirmButton);
+    modal.appendChild(title);
+    modal.appendChild(typeLabel);
+    modal.appendChild(typeInput);
+    modal.appendChild(buttonContainer);
+    
+    // 添加到頁面
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+}
+
+// 關閉所有彈窗
+function closeAllModals() {
+    const backdrop = document.getElementById('modal-backdrop');
+    const locationModal = document.getElementById('location-input-modal');
+    const leaveModal = document.getElementById('temp-leave-modal');
+    const dutyModal = document.getElementById('special-duty-modal');
+    
+    if (backdrop) backdrop.classList.add('hidden');
+    if (locationModal) locationModal.classList.add('hidden');
+    if (leaveModal) leaveModal.classList.add('hidden');
+    if (dutyModal) dutyModal.classList.add('hidden');
+}
+
+// 保存請假記錄
+function saveLeaveRecord(reason, returnTime) {
+    if (!firebase.auth().currentUser) {
+        showToast('用戶未登入', true);
+        return;
+    }
+    
+    const userId = firebase.auth().currentUser.uid;
+    const timestamp = firebase.firestore.Timestamp.now();
+    const returnTimestamp = firebase.firestore.Timestamp.fromDate(new Date(returnTime));
+    
+    const leaveRecord = {
+        userId: userId,
+        timestamp: timestamp,
+        type: '臨時請假',
+        reason: reason,
+        returnTime: returnTimestamp,
+        status: 'active'
+    };
+    
+    firebase.firestore().collection('leaveRecords').add(leaveRecord)
+        .then(() => {
+            // 更新用戶狀態
+            return firebase.firestore().collection('users').doc(userId).update({
+                clockInStatus: '臨時請假',
+                lastLeaveTime: timestamp
+            });
+        })
+        .then(() => {
+            state.clockInStatus = '臨時請假';
+            updateButtonStatus();
+            updateStatusDisplay();
+            showToast('請假申請已提交', false);
+        })
+        .catch(error => {
+            console.error('保存請假記錄失敗:', error);
+            showToast('請假申請失敗', true);
+        });
 }
 
 // 保存特殊勤務記錄
-async function saveDutyRecord(duty) {
-    try {
-        const auth = firebase.auth().currentUser;
-        if (!auth) {
-            showToast('請先登入', 'error');
-            return;
-        }
-        
-        const userId = auth.uid;
-        const db = firebase.firestore();
-        
-        // 保存特殊勤務記錄
-        await addDoc(collection(db, 'duty_records'), {
-            userId,
-            duty,
-            timestamp: serverTimestamp()
-        });
-        
-        showToast('特殊勤務已登記', 'success');
-    } catch (error) {
-        console.error('保存特殊勤務記錄失敗:', error);
-        showToast('特殊勤務登記失敗', 'error');
+function saveDutyRecord(dutyType) {
+    if (!firebase.auth().currentUser) {
+        showToast('用戶未登入', true);
+        return;
     }
+    
+    const userId = firebase.auth().currentUser.uid;
+    const timestamp = firebase.firestore.Timestamp.now();
+    
+    const dutyRecord = {
+        userId: userId,
+        timestamp: timestamp,
+        type: '特殊勤務',
+        dutyType: dutyType,
+        status: 'active'
+    };
+    
+    firebase.firestore().collection('dutyRecords').add(dutyRecord)
+        .then(() => {
+            // 更新用戶狀態
+            return firebase.firestore().collection('users').doc(userId).update({
+                clockInStatus: '特殊勤務',
+                lastDutyTime: timestamp
+            });
+        })
+        .then(() => {
+            state.clockInStatus = '特殊勤務';
+            updateButtonStatus();
+            updateStatusDisplay();
+            showToast('特殊勤務已登記', false);
+        })
+        .catch(error => {
+            console.error('保存特殊勤務記錄失敗:', error);
+            showToast('特殊勤務登記失敗', true);
+        });
 }
 
 // 格式化日期時間為datetime-local格式
@@ -492,378 +557,26 @@ function formatDatetimeLocal(date) {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-// 初始化事件監聽器
-document.addEventListener('DOMContentLoaded', () => {
+// 添加事件監聽器
+document.addEventListener('DOMContentLoaded', function() {
+    // 外出按鈕
+    const outboundButton = document.querySelector('#clock-in-buttons button:nth-child(3)');
+    if (outboundButton) {
+        outboundButton.addEventListener('click', openLocationInputModal);
+    }
+    
+    // 臨時請假按鈕
+    const leaveButton = document.querySelector('#clock-in-buttons button:nth-child(7)');
+    if (leaveButton) {
+        leaveButton.addEventListener('click', openTempLeaveModal);
+    }
+    
+    // 特殊勤務按鈕
+    const dutyButton = document.querySelector('#clock-in-buttons button:nth-child(8)');
+    if (dutyButton) {
+        dutyButton.addEventListener('click', openSpecialDutyModal);
+    }
+    
     // 初始化打卡按鈕狀態
-    setTimeout(() => {
-        initClockInButtonStatus();
-    }, 1000); // 延遲1秒，確保Firebase已初始化
-    
-    // 綁定打卡按鈕事件
-    document.addEventListener('click', (e) => {
-        // 外出打卡按鈕
-        if (e.target.matches('.clock-in-btn[data-type="外出"]') && !e.target.disabled) {
-            e.preventDefault();
-            openLocationInputModal();
-        }
-        
-        // 臨時請假按鈕
-        if (e.target.matches('.clock-in-btn[data-type="臨時請假"]') && !e.target.disabled) {
-            e.preventDefault();
-            openTempLeaveModal();
-        }
-        
-        // 特殊勤務按鈕
-        if (e.target.matches('.clock-in-btn[data-type="特殊勤務"]') && !e.target.disabled) {
-            e.preventDefault();
-            openSpecialDutyModal();
-        }
-    });
+    setTimeout(initClockInButtonStatus, 1000);
 });
-        } else {
-            // 新用戶，只啟用上班打卡
-            enableOnlyButton('上班');
-        }
-    }).catch(error => {
-        console.error("獲取用戶狀態失敗:", error);
-        showToast("獲取用戶狀態失敗，請重新整理頁面", true);
-    });
-}
-
-function updateButtonStatus() {
-    // 禁用所有按鈕
-    document.querySelectorAll('.clock-in-btn').forEach(btn => {
-        btn.classList.add('disabled', 'bg-gray-500');
-        btn.classList.remove('bg-green-500', 'bg-blue-600', 'bg-teal-600', 'bg-purple-600', 'bg-yellow-600');
-    });
-    
-    // 根據當前狀態啟用相應按鈕
-    switch (state.clockInStatus) {
-        case '上班':
-            // 上班狀態下，可以下班打卡和外出打卡
-            enableButton('下班', 'bg-gray-600');
-            enableButton('外出', 'bg-blue-600');
-            break;
-        case '下班':
-            // 下班狀態下，只能上班打卡
-            enableButton('上班', 'bg-green-600');
-            break;
-        case '外出':
-            // 外出狀態下，可以抵達打卡
-            enableButton('抵達', 'bg-purple-600');
-            break;
-        case '抵達':
-            // 抵達狀態下，可以離開打卡
-            enableButton('離開', 'bg-yellow-600');
-            break;
-        case '離開':
-            // 離開狀態下，可以外出打卡
-            enableButton('外出', 'bg-blue-600');
-            break;
-        case '返回':
-            // 返回狀態下，可以下班打卡和外出打卡
-            enableButton('下班', 'bg-gray-600');
-            enableButton('外出', 'bg-blue-600');
-            break;
-        default:
-            // 默認狀態，只能上班打卡
-            enableButton('上班', 'bg-green-600');
-    }
-}
-
-function enableButton(type, bgClass) {
-    const btn = document.querySelector(`.clock-in-btn[data-type="${type}"]`);
-    if (btn) {
-        btn.classList.remove('disabled', 'bg-gray-500');
-        btn.classList.add(bgClass);
-    }
-}
-
-function enableOnlyButton(type) {
-    document.querySelectorAll('.clock-in-btn').forEach(btn => {
-        if (btn.dataset.type === type) {
-            btn.classList.remove('disabled', 'bg-gray-500');
-            btn.classList.add('bg-green-500');
-        } else {
-            btn.classList.add('disabled', 'bg-gray-500');
-        }
-    });
-}
-
-function openLocationInputModal(type, location) {
-    const modalId = `location-input-modal-${Date.now()}`;
-    
-    const modalHTML = `
-        <div id="${modalId}" class="modal-backdrop">
-            <div class="modal-content w-[90%] max-w-[400px] bg-white rounded-lg shadow-xl">
-                <div class="p-4 border-b">
-                    <h3 class="font-bold text-lg">請輸入外出地點</h3>
-                </div>
-                <div class="p-4">
-                    <input type="text" id="outbound-location" class="w-full border border-gray-300 rounded-md px-3 py-2 mb-4" placeholder="請輸入外出地點">
-                    <div class="flex justify-end space-x-2">
-                        <button class="cancel-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
-                        <button class="confirm-btn px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">確認</button>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    const modal = document.getElementById(modalId);
-    
-    // 取消按鈕
-    modal.querySelector('.cancel-btn').addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    // 確認按鈕
-    modal.querySelector('.confirm-btn').addEventListener('click', () => {
-        const locationInput = document.getElementById('outbound-location');
-        const outboundLocation = locationInput.value.trim();
-        
-        if (!outboundLocation) {
-            showToast("請輸入外出地點", true);
-            return;
-        }
-        
-        // 保存外出地點
-        state.outboundLocation = outboundLocation;
-        
-        // 關閉模態窗
-        modal.remove();
-        
-        // 打開相機模態窗
-        openCameraModal(type, location);
-    });
-}
-
-function openTempLeaveModal() {
-    const modalId = `temp-leave-modal-${Date.now()}`;
-    
-    const modalHTML = `
-        <div id="${modalId}" class="modal-backdrop">
-            <div class="modal-content w-[90%] max-w-[400px] bg-white rounded-lg shadow-xl">
-                <div class="p-4 border-b">
-                    <h3 class="font-bold text-lg">臨時請假</h3>
-                </div>
-                <div class="p-4 space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">請假事由</label>
-                        <select id="leave-reason" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                            <option value="">請選擇請假事由</option>
-                            <option value="病假">病假</option>
-                            <option value="事假">事假</option>
-                            <option value="其他">其他</option>
-                        </select>
-                        <div id="other-reason-container" class="mt-2 hidden">
-                            <input type="text" id="other-reason" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="請輸入請假事由">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">請假時間</label>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="block text-xs text-gray-500">從</label>
-                                <input type="datetime-local" id="leave-start" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-500">至</label>
-                                <input type="datetime-local" id="leave-end" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex justify-end space-x-2 pt-2">
-                        <button class="cancel-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
-                        <button class="confirm-btn px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">確認請假</button>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    const modal = document.getElementById(modalId);
-    
-    // 其他事由顯示/隱藏
-    const reasonSelect = document.getElementById('leave-reason');
-    const otherReasonContainer = document.getElementById('other-reason-container');
-    
-    reasonSelect.addEventListener('change', () => {
-        if (reasonSelect.value === '其他') {
-            otherReasonContainer.classList.remove('hidden');
-        } else {
-            otherReasonContainer.classList.add('hidden');
-        }
-    });
-    
-    // 取消按鈕
-    modal.querySelector('.cancel-btn').addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    // 確認按鈕
-    modal.querySelector('.confirm-btn').addEventListener('click', () => {
-        const reason = reasonSelect.value;
-        const otherReason = document.getElementById('other-reason')?.value;
-        const startTime = document.getElementById('leave-start').value;
-        const endTime = document.getElementById('leave-end').value;
-        
-        // 驗證輸入
-        if (!reason) {
-            showToast("請選擇請假事由", true);
-            return;
-        }
-        
-        if (reason === '其他' && !otherReason) {
-            showToast("請輸入請假事由", true);
-            return;
-        }
-        
-        if (!startTime || !endTime) {
-            showToast("請選擇請假時間", true);
-            return;
-        }
-        
-        // 這裡可以添加保存請假記錄的邏輯
-        showToast("請假申請已提交");
-        
-        // 關閉模態窗
-        modal.remove();
-    });
-}
-
-function openSpecialDutyModal() {
-    const modalId = `special-duty-modal-${Date.now()}`;
-    
-    const modalHTML = `
-        <div id="${modalId}" class="modal-backdrop">
-            <div class="modal-content w-[90%] max-w-[400px] bg-white rounded-lg shadow-xl">
-                <div class="p-4 border-b">
-                    <h3 class="font-bold text-lg">特殊勤務</h3>
-                </div>
-                <div class="p-4 space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">勤務事項</label>
-                        <select id="duty-type" class="w-full border border-gray-300 rounded-md px-3 py-2">
-                            <option value="">請選擇勤務事項</option>
-                            <option value="簡報">簡報</option>
-                            <option value="例會">例會</option>
-                            <option value="區大">區大</option>
-                            <option value="臨時會">臨時會</option>
-                            <option value="其他活動">其他活動</option>
-                            <option value="其他">其他</option>
-                        </select>
-                        <div id="other-duty-container" class="mt-2 hidden">
-                            <input type="text" id="other-duty" class="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="請輸入勤務事項">
-                        </div>
-                    </div>
-                    <div class="flex justify-end space-x-2 pt-2">
-                        <button class="cancel-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
-                        <button class="confirm-btn px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">確認</button>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    const modal = document.getElementById(modalId);
-    
-    // 其他事項顯示/隱藏
-    const dutySelect = document.getElementById('duty-type');
-    const otherDutyContainer = document.getElementById('other-duty-container');
-    
-    dutySelect.addEventListener('change', () => {
-        if (dutySelect.value === '其他') {
-            otherDutyContainer.classList.remove('hidden');
-        } else {
-            otherDutyContainer.classList.add('hidden');
-        }
-    });
-    
-    // 取消按鈕
-    modal.querySelector('.cancel-btn').addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    // 確認按鈕
-    modal.querySelector('.confirm-btn').addEventListener('click', () => {
-        const dutyType = dutySelect.value;
-        const otherDuty = document.getElementById('other-duty')?.value;
-        
-        // 驗證輸入
-        if (!dutyType) {
-            showToast("請選擇勤務事項", true);
-            return;
-        }
-        
-        if (dutyType === '其他' && !otherDuty) {
-            showToast("請輸入勤務事項", true);
-            return;
-        }
-        
-        // 這裡可以添加保存特殊勤務記錄的邏輯
-        showToast("特殊勤務已記錄");
-        
-        // 關閉模態窗
-        modal.remove();
-    });
-}
-
-// 在保存打卡記錄後更新用戶狀態和按鈕狀態
-async function saveClockInRecord(type, location, photoUrl, description) {
-    try {
-        showLoading(true);
-        
-        // 保存打卡記錄
-        const recordData = {
-            userId: state.currentUser.uid,
-            userName: state.currentUser.displayName,
-            type: type,
-            timestamp: serverTimestamp(),
-            location: location,
-            photoUrl: photoUrl,
-            description: description || ''
-        };
-        
-        // 如果是外出打卡，添加外出地點
-        if (type === '外出') {
-            recordData.outboundLocation = state.outboundLocation;
-        }
-        
-        // 添加記錄到 Firestore
-        await addDoc(collection(db, "clockInRecords"), recordData);
-        
-        // 更新用戶狀態
-        const userRef = doc(db, "users", state.currentUser.uid);
-        const userData = {
-            status: type,
-            lastClockInTime: serverTimestamp()
-        };
-        
-        // 如果是外出打卡，保存外出地點
-        if (type === '外出') {
-            userData.outboundLocation = state.outboundLocation;
-        } else if (type === '返回') {
-            // 返回時清除外出地點
-            userData.outboundLocation = null;
-        }
-        
-        await updateDoc(userRef, userData);
-        
-        // 更新本地狀態
-        state.clockInStatus = type;
-        
-        // 更新按鈕狀態
-        updateButtonStatus();
-        
-        // 更新狀態顯示
-        updateStatusDisplay();
-        
-        showToast("打卡成功");
-    } catch (error) {
-        console.error("打卡失敗:", error);
-        showToast("打卡失敗，請稍後再試", true);
-    } finally {
-        showLoading(false);
-    }
-}
