@@ -33,6 +33,18 @@
         // 獲取 Firestore 實例
         const db = firebase.firestore();
         const auth = firebase.auth();
+        
+        // 自動登入測試用戶
+        window.addEventListener('DOMContentLoaded', () => {
+            // 使用匿名登入
+            firebase.auth().signInAnonymously()
+                .then(() => {
+                    console.log('已自動登入測試用戶');
+                })
+                .catch((error) => {
+                    console.error('登入失敗:', error);
+                });
+        });
     </script>
     
     <script src="clock-in-functions.js" defer></script>

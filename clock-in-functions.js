@@ -30,40 +30,84 @@ function updateStatusDisplay() {
         statusDisplay.appendChild(statusText);
         
         clockInContainer.insertBefore(statusDisplay, clockInButtons);
-    } else {
-        const statusText = document.getElementById('status-text');
-        if (statusText) {
-            // 根據狀態更新顯示
-            switch(state.clockInStatus) {
-                case '上班':
-                    statusText.textContent = '在辦公室';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
-                    break;
-                case '下班':
-                    statusText.textContent = '已下班';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
-                    break;
-                case '外出':
-                    statusText.textContent = '外出中';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
-                    break;
-                case '抵達':
-                    statusText.textContent = '抵達';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
-                    break;
-                case '離開':
-                    statusText.textContent = '離開';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
-                    break;
-                case '返回':
-                    statusText.textContent = '返回辦公室';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
-                    break;
-                default:
-                    statusText.textContent = '尚未打卡';
-                    statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
-            }
+    }
+    
+    // 更新儀表板狀態
+    updateDashboardStatus();
+    
+    // 更新打卡狀態顯示
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+        // 根據狀態更新顯示
+        switch(state.clockInStatus) {
+            case '上班':
+                statusText.textContent = '上班中-辦公室';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
+                break;
+            case '下班':
+                statusText.textContent = '已下班';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
+                break;
+            case '外出':
+                statusText.textContent = '外出中';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
+                break;
+            case '抵達':
+                statusText.textContent = '抵達';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
+                break;
+            case '離開':
+                statusText.textContent = '離開';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
+                break;
+            case '返回':
+                statusText.textContent = '上班中-辦公室';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
+                break;
+            default:
+                statusText.textContent = '尚未打卡';
+                statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
         }
+    }
+}
+
+// 更新儀表板狀態
+function updateDashboardStatus() {
+    const dashboardStatusElement = document.getElementById('my-status');
+    if (dashboardStatusElement) {
+        let statusText = '';
+        switch(state.clockInStatus) {
+            case '上班':
+                statusText = '上班中-辦公室';
+                break;
+            case '下班':
+                statusText = '已下班';
+                break;
+            case '外出':
+                statusText = '外出中';
+                if (state.outboundLocation) {
+                    statusText += `-${state.outboundLocation}`;
+                }
+                break;
+            case '抵達':
+                statusText = '抵達';
+                if (state.outboundLocation) {
+                    statusText += `-${state.outboundLocation}`;
+                }
+                break;
+            case '離開':
+                statusText = '離開';
+                if (state.outboundLocation) {
+                    statusText += `-${state.outboundLocation}`;
+                }
+                break;
+            case '返回':
+                statusText = '上班中-辦公室';
+                break;
+            default:
+                statusText = '尚未打卡';
+        }
+        dashboardStatusElement.textContent = statusText;
     }
 }
 
@@ -155,10 +199,19 @@ function updateButtonStatus() {
             enableButton('臨時請假');
             enableButton('特殊勤務');
             break;
+        case '臨時請假':
+            // 臨時請假中，不啟用任何按鈕
+            break;
+        case '特殊勤務':
+            // 特殊勤務中，不啟用任何按鈕
+            break;
         default:
             // 未知狀態，只啟用上班按鈕
             enableOnlyButton('上班');
     }
+    
+    // 更新狀態顯示
+    updateStatusDisplay();
 }
 
 // 啟用指定按鈕
