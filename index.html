@@ -71,10 +71,21 @@
         }
         .main-container {
             width: 400px;
-            height: 750px;
+            height: calc(100vh - 20px);
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             border-radius: 1.5rem;
             overflow: hidden;
+            margin: 10px;
+        }
+        .header {
+            height: 70px;
+        }
+        .footer {
+            height: 70px;
+        }
+        .content-area {
+            height: calc(100% - 140px);
+            overflow-y: auto;
         }
         .hide { display: none !important; }
         .tab-btn.active {
