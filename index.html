@@ -578,7 +578,23 @@
                     let myStatusFound = false;
                     const users = [];
                     querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
-                    users.sort((a, b) => {
+                    
+                    // 獲取設定中的可見使用者設定
+                    let visibleUsers = {};
+                    try {
+                        const savedSettings = localStorage.getItem('app_general_settings');
+                        if (savedSettings) {
+                            const settings = JSON.parse(savedSettings);
+                            visibleUsers = settings.visibleUsers || {};
+                        }
+                    } catch (e) {
+                        console.warn("Could not load user visibility settings:", e);
+                    }
+                    
+                    // 過濾掉不顯示的使用者
+                    const visibleUsersList = users.filter(user => visibleUsers[user.id] !== false);
+                    
+                    visibleUsersList.sort((a, b) => {
                         // 首先按狀態排序：「上班中」的排在最前面
                         const statusA = getStatusDisplayText(a.clockInStatus || '未打卡', a.lastLocation);
                         const statusB = getStatusDisplayText(b.clockInStatus || '未打卡', b.lastLocation);
@@ -1990,6 +2006,22 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">顯示所有帳號</h3>
+                            <p class="text-sm text-gray-600 mb-4">勾選要在儀表板「所有同仁狀態」中顯示的帳號</p>
+                            <div id="user-display-settings" class="space-y-2">
+                                <div class="flex items-center justify-between p-2 border-b">
+                                    <label class="text-gray-700 font-medium">帳號名稱</label>
+                                    <label class="text-gray-700 font-medium">顯示</label>
+                                </div>
+                                <div class="flex justify-center items-center py-4">
+                                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                                    <span class="ml-2 text-gray-600">載入中...</span>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <button id="save-general-settings" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
                             <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存設定
                         </button>
@@ -2003,11 +2035,101 @@
                     if (docSnap.exists()) {
                         const settings = docSnap.data();
                         document.getElementById('show-employee-status').checked = settings.showEmployeeStatus !== false;
+                        
+                        // 載入使用者顯示設定
+                        loadUserDisplaySettings(settings.visibleUsers || {});
+                    } else {
+                        // 如果設定不存在，載入預設值（全部顯示）
+                        loadUserDisplaySettings({});
                     }
                 }).catch(error => {
                     console.error("Error getting general settings:", error);
                     showToast("無法讀取設定", true);
+                    // 發生錯誤時，仍然載入使用者列表
+                    loadUserDisplaySettings({});
                 });
+                
+                // 載入使用者列表並設定顯示狀態
+                function loadUserDisplaySettings(visibleUsers) {
+                    const userDisplayContainer = document.getElementById('user-display-settings');
+                    
+                    // 獲取所有使用者
+                    const usersRef = collection(db, "users");
+                    getDocs(usersRef).then((querySnapshot) => {
+                        // 清除載入中的提示
+                        userDisplayContainer.innerHTML = `
+                            <div class="flex items-center justify-between p-2 border-b">
+                                <label class="text-gray-700 font-medium">帳號名稱</label>
+                                <label class="text-gray-700 font-medium">顯示</label>
+                            </div>
+                        `;
+                        
+                        // 添加全選/取消全選選項
+                        const selectAllDiv = document.createElement('div');
+                        selectAllDiv.className = 'flex items-center justify-between p-2 border-b bg-gray-50';
+                        selectAllDiv.innerHTML = `
+                            <label for="select-all-users" class="text-gray-700 font-medium">全選/取消全選</label>
+                            <label class="switch">
+                                <input type="checkbox" id="select-all-users">
+                                <span class="slider round"></span>
+                            </label>
+                        `;
+                        userDisplayContainer.appendChild(selectAllDiv);
+                        
+                        // 獲取全選/取消全選的checkbox
+                        const selectAllCheckbox = document.getElementById('select-all-users');
+                        
+                        // 添加使用者列表
+                        const userCheckboxes = [];
+                        querySnapshot.forEach((doc) => {
+                            const userData = doc.data();
+                            const userId = doc.id;
+                            
+                            // 預設值：如果visibleUsers為空或該使用者未設定，則顯示
+                            const isVisible = visibleUsers[userId] !== false;
+                            
+                            const userDiv = document.createElement('div');
+                            userDiv.className = 'flex items-center justify-between p-2 border-b';
+                            userDiv.innerHTML = `
+                                <label for="user-${userId}" class="text-gray-700">${userData.name || userData.email || '未命名使用者'}</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="user-${userId}" data-user-id="${userId}" class="user-visibility-checkbox" ${isVisible ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                            `;
+                            userDisplayContainer.appendChild(userDiv);
+                            
+                            // 將checkbox加入陣列，以便後續全選/取消全選操作
+                            const checkbox = userDiv.querySelector(`#user-${userId}`);
+                            userCheckboxes.push(checkbox);
+                        });
+                        
+                        // 設定全選/取消全選的功能
+                        selectAllCheckbox.checked = userCheckboxes.every(cb => cb.checked);
+                        selectAllCheckbox.addEventListener('change', () => {
+                            const isChecked = selectAllCheckbox.checked;
+                            userCheckboxes.forEach(cb => {
+                                cb.checked = isChecked;
+                            });
+                        });
+                        
+                        // 當個別checkbox變更時，更新全選checkbox的狀態
+                        userCheckboxes.forEach(cb => {
+                            cb.addEventListener('change', () => {
+                                selectAllCheckbox.checked = userCheckboxes.every(cb => cb.checked);
+                            });
+                        });
+                        
+                    }).catch(error => {
+                        console.error("Error getting users:", error);
+                        userDisplayContainer.innerHTML = `
+                            <div class="p-4 text-center text-red-600">
+                                <p>無法載入使用者列表</p>
+                                <p class="text-sm">${error.message}</p>
+                            </div>
+                        `;
+                    });
+                }
                 
                 // 儲存設定
                 document.getElementById('save-general-settings').addEventListener('click', async () => {
@@ -2015,8 +2137,19 @@
                         showLoading(true);
                         const showEmployeeStatus = document.getElementById('show-employee-status').checked;
                         
+                        // 收集使用者顯示設定
+                        const visibleUsers = {};
+                        document.querySelectorAll('.user-visibility-checkbox').forEach(checkbox => {
+                            const userId = checkbox.dataset.userId;
+                            // 只儲存未勾選的使用者（預設為顯示）
+                            if (!checkbox.checked) {
+                                visibleUsers[userId] = false;
+                            }
+                        });
+                        
                         await setDoc(doc(db, "settings", "general"), {
                             showEmployeeStatus,
+                            visibleUsers,
                             updatedAt: serverTimestamp()
                         }, { merge: true });
                         
