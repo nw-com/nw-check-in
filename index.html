@@ -473,7 +473,7 @@
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => state.currentUserData.role === 'admin' ? renderTracking(subPage || 'map') : renderAccessDenied(),
+                    'tracking': () => state.currentUserData.role === 'admin' || state.currentUserData.role === 'manager' ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news')
                 };
@@ -1953,7 +1953,15 @@
                                     <p class="text-sm text-gray-500">${user.email}</p>
                                     <div class="flex items-center">
                                         <p class="text-xs text-gray-400 mr-2">${user.phone || ''}</p>
-                                        <span class="text-xs px-2 py-1 rounded-full ${user.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}">${user.role === 'admin' ? '管理員' : '員工'}</span>
+                                        <span class="text-xs px-2 py-1 rounded-full ${
+  user.role === 'admin' ? 'bg-red-100 text-red-700' : 
+  user.role === 'manager' ? 'bg-purple-100 text-purple-700' : 
+  'bg-blue-100 text-blue-700'
+}">${
+  user.role === 'admin' ? '管理員' : 
+  user.role === 'manager' ? '主管' : 
+  '員工'
+}</span>
                                     </div>
                                 </div>
                             </div>
@@ -2753,6 +2761,7 @@
                                     <label for="user-role" class="block text-sm font-medium text-gray-700">角色 (必填)</label>
                                     <select id="user-role" class="w-full mt-1 px-3 py-2 border rounded-md">
                                         <option value="user" ${isEditing && user.role === 'user' ? 'selected' : ''}>員工 (User)</option>
+                                        <option value="manager" ${isEditing && user.role === 'manager' ? 'selected' : ''}>主管 (Manager)</option>
                                         <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>管理員 (Admin)</option>
                                     </select>
                                 </div>
