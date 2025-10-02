@@ -2717,10 +2717,8 @@
                                     <img id="user-avatar-preview" src="${isEditing && user.avatarUrl ? user.avatarUrl : defaultAvatar}" class="w-20 h-20 rounded-full object-cover">
                                     <input type="file" id="user-avatar-upload" class="hidden" accept="image/*">
                                     <div class="flex space-x-2">
-                                        ${!isEditing ? `
                                         <button type="button" id="user-upload-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">上傳照片</button>
                                         <button type="button" id="user-camera-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">開啟相機</button>
-                                        ` : `<p class="text-sm text-gray-500">已存在帳號無法編輯頭像</p>`}
                                     </div>
                                 </div>
                                 
@@ -2777,16 +2775,23 @@
                 const avatarUploadInput = document.getElementById('user-avatar-upload');
 
                 // --- Avatar Logic ---
-                if (!isEditing) {
-                    document.getElementById('user-upload-avatar-btn').addEventListener('click', () => avatarUploadInput.click());
-                    avatarUploadInput.addEventListener('change', (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                            newUserAvatarFile = file;
-                            avatarPreview.src = URL.createObjectURL(file);
-                        }
-                    });
-                    document.getElementById('user-camera-avatar-btn').addEventListener('click', () => {
+                // 允許所有用戶（包括編輯現有用戶）上傳頭像
+                const uploadBtn = document.getElementById('user-upload-avatar-btn');
+                if (uploadBtn) {
+                    uploadBtn.addEventListener('click', () => avatarUploadInput.click());
+                }
+                
+                avatarUploadInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        newUserAvatarFile = file;
+                        avatarPreview.src = URL.createObjectURL(file);
+                    }
+                });
+                
+                const cameraBtn = document.getElementById('user-camera-avatar-btn');
+                if (cameraBtn) {
+                    cameraBtn.addEventListener('click', () => {
                         openAvatarCameraModal((blob) => {
                             if (blob) {
                                 newUserAvatarFile = blob;
