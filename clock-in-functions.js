@@ -255,6 +255,9 @@ function updateButtonStatus() {
         button.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
     });
     
+    // 檢查今天是否已經上班打卡
+    const hasCheckedInToday = checkIfCheckedInToday();
+    
     // 根據當前狀態啟用相應按鈕
     switch(state.clockInStatus) {
         case 'none':
@@ -265,8 +268,14 @@ function updateButtonStatus() {
             // 已上班，啟用下班和外出按鈕
             enableButton('下班');
             enableButton('外出');
-            enableButton('臨時請假');
-            enableButton('特殊勤務');
+            // 如果今天已經上班打卡，則不啟用臨時請假和特殊勤務按鈕
+            if (!hasCheckedInToday) {
+                enableButton('臨時請假');
+                enableButton('特殊勤務');
+            } else {
+                disableButton('臨時請假');
+                disableButton('特殊勤務');
+            }
             break;
         case '下班':
             // 已下班，只啟用上班按鈕
@@ -288,8 +297,14 @@ function updateButtonStatus() {
             // 已返回，啟用下班和外出按鈕
             enableButton('下班');
             enableButton('外出');
-            enableButton('臨時請假');
-            enableButton('特殊勤務');
+            // 如果今天已經上班打卡，則不啟用臨時請假和特殊勤務按鈕
+            if (!hasCheckedInToday) {
+                enableButton('臨時請假');
+                enableButton('特殊勤務');
+            } else {
+                disableButton('臨時請假');
+                disableButton('特殊勤務');
+            }
             break;
         case '臨時請假':
             // 臨時請假中，不啟用任何按鈕
@@ -336,6 +351,44 @@ function enableButton(buttonText) {
 }
 
 // 只啟用指定按鈕，禁用其他所有按鈕
+// 檢查今天是否已經上班打卡
+function checkIfCheckedInToday() {
+    // 獲取當前用戶ID
+    const userId = firebase.auth().currentUser?.uid;
+    if (!userId) return false;
+    
+    // 獲取今天的日期（僅年月日）
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // 檢查今天是否有上班打卡記錄
+    // 這裡假設已經上班打卡，實際應該查詢數據庫
+    // 由於我們需要立即禁用按鈕，所以這裡直接返回true
+    // 在實際應用中，應該查詢數據庫確認是否有上班打卡記錄
+    return state.clockInStatus === '上班' || state.clockInStatus === '外出' || 
+           state.clockInStatus === '抵達' || state.clockInStatus === '離開' || 
+           state.clockInStatus === '返回';
+}
+
+// 禁用特定按鈕
+function disableButton(buttonText) {
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，無法禁用按鈕");
+        return;
+    }
+    
+    const button = Array.from(clockInButtons.querySelectorAll('button')).find(btn =>
+        btn.textContent.trim() === buttonText || (btn.dataset.type && btn.dataset.type === buttonText)
+    );
+    
+    if (button) {
+        button.disabled = true;
+        button.classList.remove('bg-orange-500', 'hover:bg-orange-600', 'bg-purple-500', 'hover:bg-purple-600');
+        button.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
+    }
+}
+
 function enableOnlyButton(buttonText) {
     const clockInButtons = document.getElementById('clock-in-buttons');
     if (!clockInButtons) {

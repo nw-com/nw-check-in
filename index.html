@@ -1842,7 +1842,7 @@
                                 <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
                                 <div>
                                     <p class="font-medium text-sm text-gray-800">${user.name}</p>
-                                    <p class="text-xs text-gray-500">${user.status || '未打卡'}</p>
+                                    <p class="text-xs text-gray-500">${getStatusDisplayText(user.status, user.lastLocation?.address) || '未打卡'}</p>
                                 </div>
                             </div>
                             <span class="text-xs text-gray-400">${user.lastClockInTime ? timeAgo(user.lastClockInTime.toDate()) : '無紀錄'}</span>
@@ -1867,7 +1867,7 @@
                                 content: `
                                     <div class="p-1">
                                         <p class="font-bold">${user.name}</p>
-                                        <p>狀態: ${user.status}</p>
+                                        <p>狀態: ${getStatusDisplayText(user.status, user.lastLocation?.address)}</p>
                                         <p>時間: ${user.lastClockInTime ? user.lastClockInTime.toDate().toLocaleTimeString('zh-TW') : 'N/A'}</p>
                                     </div>
                                 `
