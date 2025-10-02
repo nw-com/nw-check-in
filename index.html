@@ -1630,9 +1630,10 @@
                         
                         // 日期過濾
                         const selectedDate = date ? new Date(date) : null;
+                        let nextDay = null;
                         if (selectedDate) {
                             selectedDate.setHours(0, 0, 0, 0);
-                            const nextDay = new Date(selectedDate);
+                            nextDay = new Date(selectedDate);
                             nextDay.setDate(nextDay.getDate() + 1);
                         }
                         
@@ -1643,7 +1644,7 @@
                             const leaveId = doc.id;
                             
                             // 如果選擇了日期，檢查請假時間是否在所選日期範圍內
-                            if (selectedDate) {
+                            if (selectedDate && nextDay) {
                                 const startTime = leave.startTime.toDate();
                                 const endTime = leave.endTime.toDate();
                                 
