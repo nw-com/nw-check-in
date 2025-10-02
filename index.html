@@ -178,7 +178,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">雲端測試版V1.3.0</p>
+            <p class="text-gray-500">雲端測試版V2.2.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -436,7 +436,7 @@
                 }
                 const welcomeMessage = document.getElementById('welcome-message');
                 if(welcomeMessage) {
-                    welcomeMessage.textContent = `歡迎, ${state.currentUserData.name}`;
+                    welcomeMessage.textContent = `歡迎~ ${state.currentUserData.name}`;
                 }
             }
 
@@ -497,7 +497,7 @@
                             <h3 class="font-bold text-red-800 mb-2 flex items-center"><i data-lucide="user-circle" class="w-4 h-4 mr-2"></i>我的狀態</h3>
                             <div id="my-status" class="text-gray-600">讀取中...</div>
                         </div>
-                        <div>
+                        <div id="all-users-status-container">
                             <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有同仁狀態</h3>
                             <div id="all-users-status" class="space-y-2">
                                <div class="text-center p-4 text-gray-500">讀取中...</div>
@@ -511,6 +511,20 @@
                     if(timeEl){ timeEl.textContent = new Date().toLocaleString('zh-TW', { dateStyle: 'long', timeStyle: 'medium' }); }
                 }, 1000);
                 state.activeListeners.push(() => clearInterval(timerInterval));
+                
+                // 檢查是否顯示員工狀態
+                const settingsRef = doc(db, "settings", "general");
+                getDoc(settingsRef).then((docSnap) => {
+                    if (docSnap.exists()) {
+                        const settings = docSnap.data();
+                        if (settings.showEmployeeStatus === false) {
+                            const container = document.getElementById('all-users-status-container');
+                            if (container) container.style.display = 'none';
+                        }
+                    }
+                }).catch(error => {
+                    console.error("Error getting general settings:", error);
+                });
                 
                 const usersRef = collection(db, "users");
                 const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
@@ -1204,6 +1218,9 @@
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="accounts" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'accounts' ? 'active' : ''}">帳號列表</button>
                         <button data-subtab="rules" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'rules' ? 'active' : ''}">計點規則</button>
+                        <button data-subtab="general" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'general' ? 'active' : ''}">一般設定</button>
+                        <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位位置</button>
+                        <button data-subtab="holidays" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'holidays' ? 'active' : ''}">休假日</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -1212,6 +1229,12 @@
                     renderSettingsAccounts(subPageContent);
                 } else if (subPage === 'rules') {
                     renderSettingsRules(subPageContent);
+                } else if (subPage === 'general') {
+                    renderSettingsGeneral(subPageContent);
+                } else if (subPage === 'location') {
+                    renderSettingsLocation(subPageContent);
+                } else if (subPage === 'holidays') {
+                    renderSettingsHolidays(subPageContent);
                 }
                 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('settings', btn.dataset.subtab)));
@@ -1295,6 +1318,422 @@
                 state.activeListeners.push(unsubscribe);
             }
 
+            function renderSettingsGeneral(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">儀表板設定</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <label for="show-employee-status" class="text-gray-700">顯示員工狀態</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="show-employee-status" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="save-general-settings" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存設定
+                        </button>
+                    </div>`;
+                
+                lucide.createIcons();
+                
+                // 從 Firebase 讀取設定
+                const settingsRef = doc(db, "settings", "general");
+                getDoc(settingsRef).then((docSnap) => {
+                    if (docSnap.exists()) {
+                        const settings = docSnap.data();
+                        document.getElementById('show-employee-status').checked = settings.showEmployeeStatus !== false;
+                    }
+                }).catch(error => {
+                    console.error("Error getting general settings:", error);
+                    showToast("無法讀取設定", true);
+                });
+                
+                // 儲存設定
+                document.getElementById('save-general-settings').addEventListener('click', async () => {
+                    try {
+                        showLoading(true);
+                        const showEmployeeStatus = document.getElementById('show-employee-status').checked;
+                        
+                        await setDoc(doc(db, "settings", "general"), {
+                            showEmployeeStatus,
+                            updatedAt: serverTimestamp()
+                        }, { merge: true });
+                        
+                        showToast("設定已儲存");
+                    } catch (error) {
+                        console.error("Error saving general settings:", error);
+                        showToast("儲存設定失敗", true);
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+            }
+            
+            function renderSettingsLocation(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">公司位置設定</h3>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="company-lat" class="block text-sm font-medium text-gray-700">緯度</label>
+                                        <input type="number" id="company-lat" step="0.000001" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                    </div>
+                                    <div>
+                                        <label for="company-lng" class="block text-sm font-medium text-gray-700">經度</label>
+                                        <input type="number" id="company-lng" step="0.000001" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="company-radius" class="block text-sm font-medium text-gray-700">有效打卡半徑 (公尺)</label>
+                                    <input type="number" id="company-radius" min="10" max="1000" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <label for="mark-abnormal-location" class="text-gray-700">標記異常位置</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="mark-abnormal-location" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">其他打卡位置</h3>
+                            <div id="other-locations" class="space-y-4">
+                                <!-- 其他位置會動態添加在這裡 -->
+                            </div>
+                            <button id="add-location-btn" class="w-full mt-4 bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 flex items-center justify-center">
+                                <i data-lucide="plus" class="w-4 h-4 mr-2"></i>新增位置
+                            </button>
+                        </div>
+                        
+                        <button id="save-location-settings" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存設定
+                        </button>
+                    </div>`;
+                
+                lucide.createIcons();
+                
+                // 從 Firebase 讀取設定
+                const settingsRef = doc(db, "settings", "location");
+                getDoc(settingsRef).then((docSnap) => {
+                    if (docSnap.exists()) {
+                        const settings = docSnap.data();
+                        document.getElementById('company-lat').value = settings.companyLat || '';
+                        document.getElementById('company-lng').value = settings.companyLng || '';
+                        document.getElementById('company-radius').value = settings.companyRadius || 100;
+                        document.getElementById('mark-abnormal-location').checked = settings.markAbnormalLocation !== false;
+                        
+                        // 渲染其他位置
+                        renderOtherLocations(settings.otherLocations || []);
+                    }
+                }).catch(error => {
+                    console.error("Error getting location settings:", error);
+                    showToast("無法讀取位置設定", true);
+                });
+                
+                // 渲染其他位置
+                function renderOtherLocations(locations) {
+                    const container = document.getElementById('other-locations');
+                    container.innerHTML = '';
+                    
+                    if (locations.length === 0) {
+                        container.innerHTML = '<p class="text-gray-500 text-center">尚未設定其他位置</p>';
+                        return;
+                    }
+                    
+                    locations.forEach((location, index) => {
+                        const locationEl = document.createElement('div');
+                        locationEl.className = 'bg-gray-50 p-3 rounded-md border';
+                        locationEl.innerHTML = `
+                            <div class="flex justify-between items-center mb-2">
+                                <h4 class="font-medium">${location.name || `位置 ${index + 1}`}</h4>
+                                <button class="delete-location-btn text-red-500" data-index="${index}">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <div>
+                                    <label class="block text-xs text-gray-500">名稱</label>
+                                    <input type="text" class="location-name w-full px-2 py-1 border rounded-md text-sm" value="${location.name || ''}" placeholder="位置名稱">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500">半徑 (公尺)</label>
+                                    <input type="number" class="location-radius w-full px-2 py-1 border rounded-md text-sm" value="${location.radius || 100}" min="10" max="1000">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-500">緯度</label>
+                                    <input type="number" class="location-lat w-full px-2 py-1 border rounded-md text-sm" value="${location.lat || ''}" step="0.000001">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500">經度</label>
+                                    <input type="number" class="location-lng w-full px-2 py-1 border rounded-md text-sm" value="${location.lng || ''}" step="0.000001">
+                                </div>
+                            </div>
+                        `;
+                        container.appendChild(locationEl);
+                    });
+                    
+                    lucide.createIcons();
+                    
+                    // 刪除位置按鈕事件
+                    document.querySelectorAll('.delete-location-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const index = parseInt(e.currentTarget.dataset.index);
+                            const settingsRef = doc(db, "settings", "location");
+                            getDoc(settingsRef).then((docSnap) => {
+                                if (docSnap.exists()) {
+                                    const settings = docSnap.data();
+                                    const otherLocations = settings.otherLocations || [];
+                                    otherLocations.splice(index, 1);
+                                    renderOtherLocations(otherLocations);
+                                }
+                            });
+                        });
+                    });
+                }
+                
+                // 新增位置按鈕事件
+                document.getElementById('add-location-btn').addEventListener('click', () => {
+                    const settingsRef = doc(db, "settings", "location");
+                    getDoc(settingsRef).then((docSnap) => {
+                        const settings = docSnap.exists() ? docSnap.data() : {};
+                        const otherLocations = settings.otherLocations || [];
+                        otherLocations.push({
+                            name: `位置 ${otherLocations.length + 1}`,
+                            lat: '',
+                            lng: '',
+                            radius: 100
+                        });
+                        renderOtherLocations(otherLocations);
+                    });
+                });
+                
+                // 儲存設定
+                document.getElementById('save-location-settings').addEventListener('click', async () => {
+                    try {
+                        showLoading(true);
+                        const companyLat = parseFloat(document.getElementById('company-lat').value);
+                        const companyLng = parseFloat(document.getElementById('company-lng').value);
+                        const companyRadius = parseInt(document.getElementById('company-radius').value);
+                        const markAbnormalLocation = document.getElementById('mark-abnormal-location').checked;
+                        
+                        // 收集其他位置資料
+                        const otherLocations = [];
+                        document.querySelectorAll('#other-locations > div').forEach(el => {
+                            const name = el.querySelector('.location-name').value;
+                            const lat = parseFloat(el.querySelector('.location-lat').value);
+                            const lng = parseFloat(el.querySelector('.location-lng').value);
+                            const radius = parseInt(el.querySelector('.location-radius').value);
+                            
+                            if (name && !isNaN(lat) && !isNaN(lng) && !isNaN(radius)) {
+                                otherLocations.push({ name, lat, lng, radius });
+                            }
+                        });
+                        
+                        await setDoc(doc(db, "settings", "location"), {
+                            companyLat,
+                            companyLng,
+                            companyRadius,
+                            markAbnormalLocation,
+                            otherLocations,
+                            updatedAt: serverTimestamp()
+                        }, { merge: true });
+                        
+                        showToast("位置設定已儲存");
+                    } catch (error) {
+                        console.error("Error saving location settings:", error);
+                        showToast("儲存位置設定失敗", true);
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+            }
+            
+            function renderSettingsHolidays(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">上班時間設定</h3>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label for="work-start-time" class="block text-sm font-medium text-gray-700">上班時間</label>
+                                    <input type="time" id="work-start-time" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                </div>
+                                <div>
+                                    <label for="work-end-time" class="block text-sm font-medium text-gray-700">下班時間</label>
+                                    <input type="time" id="work-end-time" class="w-full mt-1 px-3 py-2 border rounded-md">
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <label for="weekend-is-holiday" class="text-gray-700">週末為休假日</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="weekend-is-holiday" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">休假日設定</h3>
+                            <div class="flex items-center space-x-2 mb-4">
+                                <input type="date" id="holiday-date" class="flex-grow px-3 py-2 border rounded-md">
+                                <button id="add-holiday-btn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 flex items-center justify-center">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div id="holidays-list" class="space-y-2 max-h-[300px] overflow-y-auto">
+                                <!-- 休假日列表會動態添加在這裡 -->
+                                <p class="text-gray-500 text-center">讀取中...</p>
+                            </div>
+                        </div>
+                        
+                        <button id="save-holiday-settings" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
+                            <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存設定
+                        </button>
+                    </div>`;
+                
+                lucide.createIcons();
+                
+                // 從 Firebase 讀取設定
+                const settingsRef = doc(db, "settings", "holidays");
+                getDoc(settingsRef).then((docSnap) => {
+                    if (docSnap.exists()) {
+                        const settings = docSnap.data();
+                        document.getElementById('work-start-time').value = settings.workStartTime || '09:00';
+                        document.getElementById('work-end-time').value = settings.workEndTime || '18:00';
+                        document.getElementById('weekend-is-holiday').checked = settings.weekendIsHoliday !== false;
+                        
+                        // 渲染休假日列表
+                        renderHolidaysList(settings.holidays || []);
+                    } else {
+                        // 預設值
+                        document.getElementById('work-start-time').value = '09:00';
+                        document.getElementById('work-end-time').value = '18:00';
+                        document.getElementById('weekend-is-holiday').checked = true;
+                        renderHolidaysList([]);
+                    }
+                }).catch(error => {
+                    console.error("Error getting holiday settings:", error);
+                    showToast("無法讀取休假日設定", true);
+                    renderHolidaysList([]);
+                });
+                
+                // 渲染休假日列表
+                function renderHolidaysList(holidays) {
+                    const container = document.getElementById('holidays-list');
+                    container.innerHTML = '';
+                    
+                    if (holidays.length === 0) {
+                        container.innerHTML = '<p class="text-gray-500 text-center">尚未設定休假日</p>';
+                        return;
+                    }
+                    
+                    // 排序休假日
+                    holidays.sort((a, b) => new Date(a) - new Date(b));
+                    
+                    holidays.forEach((holiday, index) => {
+                        const date = new Date(holiday);
+                        const formattedDate = date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+                        
+                        const holidayEl = document.createElement('div');
+                        holidayEl.className = 'flex items-center justify-between bg-gray-50 p-2 rounded-md border';
+                        holidayEl.innerHTML = `
+                            <span>${formattedDate}</span>
+                            <button class="delete-holiday-btn text-red-500" data-index="${index}">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        `;
+                        container.appendChild(holidayEl);
+                    });
+                    
+                    lucide.createIcons();
+                    
+                    // 刪除休假日按鈕事件
+                    document.querySelectorAll('.delete-holiday-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const index = parseInt(e.currentTarget.dataset.index);
+                            const settingsRef = doc(db, "settings", "holidays");
+                            getDoc(settingsRef).then((docSnap) => {
+                                if (docSnap.exists()) {
+                                    const settings = docSnap.data();
+                                    const holidays = settings.holidays || [];
+                                    holidays.splice(index, 1);
+                                    renderHolidaysList(holidays);
+                                }
+                            });
+                        });
+                    });
+                }
+                
+                // 新增休假日按鈕事件
+                document.getElementById('add-holiday-btn').addEventListener('click', () => {
+                    const holidayDate = document.getElementById('holiday-date').value;
+                    if (!holidayDate) {
+                        showToast("請選擇日期", true);
+                        return;
+                    }
+                    
+                    const settingsRef = doc(db, "settings", "holidays");
+                    getDoc(settingsRef).then((docSnap) => {
+                        const settings = docSnap.exists() ? docSnap.data() : {};
+                        const holidays = settings.holidays || [];
+                        
+                        // 檢查是否已存在
+                        if (holidays.includes(holidayDate)) {
+                            showToast("此日期已設為休假日", true);
+                            return;
+                        }
+                        
+                        holidays.push(holidayDate);
+                        renderHolidaysList(holidays);
+                        document.getElementById('holiday-date').value = '';
+                    });
+                });
+                
+                // 儲存設定
+                document.getElementById('save-holiday-settings').addEventListener('click', async () => {
+                    try {
+                        showLoading(true);
+                        const workStartTime = document.getElementById('work-start-time').value;
+                        const workEndTime = document.getElementById('work-end-time').value;
+                        const weekendIsHoliday = document.getElementById('weekend-is-holiday').checked;
+                        
+                        // 收集休假日資料
+                        const holidays = [];
+                        const settingsRef = doc(db, "settings", "holidays");
+                        const docSnap = await getDoc(settingsRef);
+                        if (docSnap.exists()) {
+                            const settings = docSnap.data();
+                            holidays.push(...(settings.holidays || []));
+                        }
+                        
+                        await setDoc(doc(db, "settings", "holidays"), {
+                            workStartTime,
+                            workEndTime,
+                            weekendIsHoliday,
+                            holidays,
+                            updatedAt: serverTimestamp()
+                        }, { merge: true });
+                        
+                        showToast("休假日設定已儲存");
+                    } catch (error) {
+                        console.error("Error saving holiday settings:", error);
+                        showToast("儲存休假日設定失敗", true);
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+            }
+            
             function renderSettingsRules(container) {
                 container.innerHTML = `
                     <div class="p-4">
