@@ -421,12 +421,16 @@
                 const navTracking = document.getElementById('nav-tracking');
                 const navSettings = document.getElementById('nav-settings');
 
-                if (state.currentUserData.role !== 'admin') {
-                    navTracking.classList.add('hide');
-                    navSettings.classList.add('hide');
-                } else {
+                // 管理員可以看到所有按鈕，主管可以看到追蹤按鈕
+                if (state.currentUserData.role === 'admin') {
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
+                } else if (state.currentUserData.role === 'manager') {
+                    navTracking.classList.remove('hide');
+                    navSettings.classList.add('hide');
+                } else {
+                    navTracking.classList.add('hide');
+                    navSettings.classList.add('hide');
                 }
                 
                 loginPage.classList.add('hide');
