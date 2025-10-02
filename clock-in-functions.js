@@ -250,71 +250,59 @@ function updateButtonStatus() {
     
     // 先禁用所有按鈕
     clockInButtons.querySelectorAll('button').forEach(button => {
-        button.disabled = false; // 設為可用但添加disabled類
-        button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'bg-green-500', 'hover:bg-green-600');
+        button.disabled = true; // 設為不可用
+        button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'bg-green-500', 'hover:bg-green-600', 
+                               'bg-red-500', 'hover:bg-red-600', 'bg-orange-500', 'hover:bg-orange-600',
+                               'bg-purple-500', 'hover:bg-purple-600', 'bg-teal-700', 'hover:bg-teal-800',
+                               'bg-red-700', 'hover:bg-red-800');
         button.classList.add('bg-gray-300', 'cursor-not-allowed', 'disabled');
     });
     
-    // 檢查今天是否已經上班打卡
-    const hasCheckedInToday = checkIfCheckedInToday();
+    // 臨時請假和特殊勤務按鈕始終保持可按
+    enableSpecialButton('臨時請假', 'bg-orange-500', 'hover:bg-orange-600');
+    enableSpecialButton('特殊勤務', 'bg-purple-500', 'hover:bg-purple-600');
     
     // 根據當前狀態啟用相應按鈕
     switch(state.clockInStatus) {
         case 'none':
             // 尚未打卡，只啟用上班按鈕
-            enableOnlyButton('上班');
+            enableButton('上班', 'bg-green-500', 'hover:bg-green-600');
             break;
         case '上班':
             // 已上班，啟用下班和外出按鈕
-            enableButton('下班');
-            enableButton('外出');
-            // 如果今天已經上班打卡，則不啟用臨時請假和特殊勤務按鈕
-            if (!hasCheckedInToday) {
-                enableButton('臨時請假');
-                enableButton('特殊勤務');
-            } else {
-                disableButton('臨時請假');
-                disableButton('特殊勤務');
-            }
+            enableButton('下班', 'bg-red-500', 'hover:bg-red-600');
+            enableButton('外出', 'bg-blue-500', 'hover:bg-blue-600');
             break;
         case '下班':
             // 已下班，只啟用上班按鈕
-            enableOnlyButton('上班');
+            enableButton('上班', 'bg-green-500', 'hover:bg-green-600');
             break;
         case '外出':
             // 外出中，啟用抵達按鈕
-            enableOnlyButton('抵達');
+            enableButton('抵達', 'bg-teal-700', 'hover:bg-teal-800');
             break;
         case '抵達':
-            // 已抵達，啟用離開按鈕
-            enableOnlyButton('離開');
+            // 已抵達，啟用離開和下班按鈕
+            enableButton('離開', 'bg-red-700', 'hover:bg-red-800');
+            enableButton('下班', 'bg-red-500', 'hover:bg-red-600');
             break;
         case '離開':
             // 已離開，啟用返回按鈕
-            enableOnlyButton('返回');
+            enableButton('返回', 'bg-blue-500', 'hover:bg-blue-600');
             break;
         case '返回':
-            // 已返回，啟用下班和外出按鈕
-            enableButton('下班');
-            enableButton('外出');
-            // 如果今天已經上班打卡，則不啟用臨時請假和特殊勤務按鈕
-            if (!hasCheckedInToday) {
-                enableButton('臨時請假');
-                enableButton('特殊勤務');
-            } else {
-                disableButton('臨時請假');
-                disableButton('特殊勤務');
-            }
+            // 已返回，啟用下班按鈕
+            enableButton('下班', 'bg-red-500', 'hover:bg-red-600');
             break;
         case '臨時請假':
-            // 臨時請假中，不啟用任何按鈕
+            // 臨時請假中，不啟用其他按鈕
             break;
         case '特殊勤務':
-            // 特殊勤務中，不啟用任何按鈕
+            // 特殊勤務中，不啟用其他按鈕
             break;
         default:
             // 未知狀態，只啟用上班按鈕
-            enableOnlyButton('上班');
+            enableButton('上班', 'bg-green-500', 'hover:bg-green-600');
     }
     
     // 更新狀態顯示
@@ -322,7 +310,7 @@ function updateButtonStatus() {
 }
 
 // 啟用指定按鈕
-function enableButton(buttonText) {
+function enableButton(buttonText, bgClass, hoverClass) {
     const clockInButtons = document.getElementById('clock-in-buttons');
     if (!clockInButtons) {
         console.log("打卡按鈕容器不存在，無法啟用按鈕");
@@ -337,16 +325,29 @@ function enableButton(buttonText) {
         button.disabled = false;
         button.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled');
         
-        // 根據按鈕類型設置不同顏色
-        if (buttonText === '下班') {
-            button.classList.add('bg-red-500', 'hover:bg-red-600');
-        } else if (buttonText === '臨時請假') {
-            button.classList.add('bg-orange-500', 'hover:bg-orange-600');
-        } else if (buttonText === '上班') {
-            button.classList.add('bg-green-500', 'hover:bg-green-600');
-        } else {
-            button.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        // 添加指定的背景和懸停類
+        if (bgClass && hoverClass) {
+            button.classList.add(bgClass, hoverClass);
         }
+    }
+}
+
+// 啟用特殊按鈕（臨時請假和特殊勤務）
+function enableSpecialButton(buttonText, bgClass, hoverClass) {
+    const clockInButtons = document.getElementById('clock-in-buttons');
+    if (!clockInButtons) {
+        console.log("打卡按鈕容器不存在，無法啟用特殊按鈕");
+        return;
+    }
+    
+    const button = Array.from(clockInButtons.querySelectorAll('button')).find(btn => 
+        btn.textContent.trim() === buttonText || (btn.dataset.type && btn.dataset.type === buttonText)
+    );
+    
+    if (button) {
+        button.disabled = false;
+        button.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled');
+        button.classList.add(bgClass, hoverClass);
     }
 }
 
