@@ -2147,13 +2147,28 @@
                             }
                         });
                         
-                        await setDoc(doc(db, "settings", "general"), {
+                        // 建立設定物件
+                        const settingsData = {
                             showEmployeeStatus,
                             visibleUsers,
-                            updatedAt: serverTimestamp()
-                        }, { merge: true });
+                            updatedAt: new Date().toISOString()
+                        };
                         
-                        showToast("設定已儲存");
+                        // 先儲存到本地
+                        localStorage.setItem('app_general_settings', JSON.stringify(settingsData));
+                        
+                        // 嘗試儲存到 Firebase
+                        try {
+                            await setDoc(doc(db, "settings", "general"), {
+                                showEmployeeStatus,
+                                visibleUsers,
+                                updatedAt: serverTimestamp()
+                            }, { merge: true });
+                            showToast("設定已儲存到雲端");
+                        } catch (firebaseError) {
+                            console.warn("無法儲存到 Firebase，但已儲存到本地:", firebaseError);
+                            showToast("設定已儲存到本地裝置");
+                        }
                     } catch (error) {
                         console.error("Error saving general settings:", error);
                         showToast("儲存設定失敗", true);
