@@ -2204,7 +2204,10 @@
                                 <!-- Avatar section -->
                                 <div class="flex flex-col items-center space-y-2">
                                     <img id="modal-avatar" src="${state.currentUserData.avatarUrl || `https://placehold.co/80x80/EFEFEF/333333?text=${state.currentUserData.name.charAt(0)}`}" alt="Avatar" class="w-20 h-20 rounded-full object-cover">
-                                    <p class="text-sm text-gray-500">無法更換頭像</p>
+                                    <label for="avatar-upload" class="cursor-pointer text-blue-600 hover:text-blue-800">
+                                        更換頭像
+                                        <input type="file" id="avatar-upload" accept="image/*" class="hidden">
+                                    </label>
                                 </div>
 
                                 <!-- Info -->
@@ -2250,13 +2253,16 @@
 
                     showLoading(true);
                     try {
+                        // 壓縮圖片
+                        const compressedFile = await compressImage(file, 300);
+                        
                         // 使用當前時間戳作為文件名，避免緩存問題
                         const timestamp = new Date().getTime();
                         const fileName = `avatar_${timestamp}.jpg`;
                         const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${fileName}`);
                         
-                        // 直接上傳原始文件，不進行壓縮
-                        await uploadBytes(storageRef, file);
+                        // 上傳壓縮後的圖片
+                        await uploadBytes(storageRef, compressedFile);
                         const downloadURL = await getDownloadURL(storageRef);
                         
                         // 更新用戶文檔
