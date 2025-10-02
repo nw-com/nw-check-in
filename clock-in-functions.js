@@ -506,15 +506,16 @@ function openTempLeaveModal() {
     startDateInput.id = 'leave-start-time';
     startDateInput.type = 'datetime-local';
     startDateInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    startDateInput.step = '3600'; // 設置步進為3600秒，即1小時
     
-    // 設置預設值為當前時間
+    // 設置預設值為當前時間（分鐘設為0）
     const now = new Date();
+    now.setMinutes(0); // 將分鐘設為0
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    startDateInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+    startDateInput.value = `${year}-${month}-${day}T${hours}:00`;
     
     const endDateLabel = document.createElement('label');
     endDateLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
@@ -524,15 +525,16 @@ function openTempLeaveModal() {
     endDateInput.id = 'leave-end-time';
     endDateInput.type = 'datetime-local';
     endDateInput.className = 'w-full border border-gray-300 rounded-md p-2 mb-4';
+    endDateInput.step = '3600'; // 設置步進為3600秒，即1小時
     
-    // 設置預設值為當前時間加8小時
+    // 設置預設值為當前時間加8小時，分鐘設為0
     const endTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    endTime.setMinutes(0); // 將分鐘設為0
     const endYear = endTime.getFullYear();
     const endMonth = String(endTime.getMonth() + 1).padStart(2, '0');
     const endDay = String(endTime.getDate()).padStart(2, '0');
     const endHours = String(endTime.getHours()).padStart(2, '0');
-    const endMinutes = String(endTime.getMinutes()).padStart(2, '0');
-    endDateInput.value = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
+    endDateInput.value = `${endYear}-${endMonth}-${endDay}T${endHours}:00`;
     
     // 按鈕容器
     const buttonContainer = document.createElement('div');
@@ -597,7 +599,8 @@ function openTempLeaveModal() {
             };
             
             // 保存到 Firestore
-            await firebase.firestore().collection('leaves').add(leaveData);
+            const leaveRef = await firebase.firestore().collection('leaves').add(leaveData);
+            console.log('請假記錄已創建:', leaveRef.id);
             
             // 更新用戶狀態
             await firebase.firestore().collection('users').doc(user.uid).update({
@@ -606,6 +609,7 @@ function openTempLeaveModal() {
                 leaveStartTime: firebase.firestore.Timestamp.fromDate(startTime),
                 leaveEndTime: firebase.firestore.Timestamp.fromDate(endTime)
             });
+            console.log('用戶狀態已更新為臨時請假');
             
             // 更新本地狀態
             state.clockInStatus = '臨時請假';
@@ -811,7 +815,8 @@ function openSpecialDutyModal() {
             };
             
             // 保存到 Firestore
-            await firebase.firestore().collection('specialDuties').add(dutyData);
+            const dutyRef = await firebase.firestore().collection('specialDuties').add(dutyData);
+            console.log('特殊勤務記錄已創建:', dutyRef.id);
             
             // 更新用戶狀態
             await firebase.firestore().collection('users').doc(user.uid).update({
@@ -821,6 +826,7 @@ function openSpecialDutyModal() {
                 dutyStartTime: firebase.firestore.Timestamp.fromDate(startTime),
                 dutyEndTime: firebase.firestore.Timestamp.fromDate(endTime)
             });
+            console.log('用戶狀態已更新為特殊勤務');
             
             // 更新本地狀態
             state.clockInStatus = '特殊勤務';
