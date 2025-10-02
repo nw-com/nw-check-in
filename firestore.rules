@@ -1,9 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 允許所有已登入用戶讀取所有集合
+    // 允許所有已登入用戶讀取所有集合，並允許寫入操作
     match /{document=**} {
       allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
     
     // 為了讓儀表板能顯示所有員工的狀態，允許所有登入的使用者讀取所有人的基本資料。
