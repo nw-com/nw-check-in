@@ -33,18 +33,30 @@ service cloud.firestore {
                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
-    // 允許用戶提交請假申請
+    // 允許用戶提交請假申請，並允許管理員審核
     match /leaves/{leaveId} {
       allow create: if request.auth != null;
       allow read: if request.auth != null;
-      allow update, delete: if false;
+      // 允許管理員更新請假申請狀態（審核功能）
+      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if false;
     }
     
-    // 允許用戶提交特殊勤務申請
+    // 允許用戶提交特殊勤務申請，並允許管理員審核
     match /specialDuties/{dutyId} {
       allow create: if request.auth != null;
       allow read: if request.auth != null;
-      allow update, delete: if false;
+      // 允許管理員更新特殊勤務申請狀態（審核功能）
+      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if false;
+    }
+    
+    // 允許讀取所有人員狀態資訊（用於人員地圖和追蹤功能）
+    match /userStatus/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth.uid == userId || 
+                             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if false;
     }
   }
 }
