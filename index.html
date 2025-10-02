@@ -639,8 +639,8 @@
                             <button data-type="返回" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
                             <button data-type="抵達" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">抵達打卡</button>
                             <button data-type="離開" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-yellow-600">離開打卡</button>
-                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">臨時請假</button>
-                            <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-indigo-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-indigo-600">特殊勤務</button>
+                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600">臨時請假</button>
+                            <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-purple-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">特殊勤務</button>
                         </div>
                     </div>`;
                 lucide.createIcons();
@@ -669,6 +669,8 @@
                         // 外出打卡需要先輸入地點
                         if (type === "外出") {
                             openLocationInputModal(type, state.currentLocation);
+                        } else if (type === "臨時請假" || type === "特殊勤務") {
+                            // 不執行相機操作
                         } else {
                             openCameraModal(type, state.currentLocation);
                         }
@@ -683,6 +685,349 @@
                 // 特殊勤務按鈕
                 document.getElementById('special-duty-btn').addEventListener('click', () => {
                     openSpecialDutyModal();
+                });
+            }
+            
+            // 臨時請假表單
+            function openTempLeaveModal() {
+                const modal = document.createElement('div');
+                modal.className = 'modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
+                modal.id = 'temp-leave-modal';
+                
+                const now = new Date();
+                const formattedNow = now.toISOString().slice(0, 16); // 格式為 YYYY-MM-DDTHH:MM
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const formattedTomorrow = tomorrow.toISOString().slice(0, 16);
+                
+                modal.innerHTML = `
+                    <div class="modal-content bg-white rounded-lg shadow-xl w-11/12 max-w-md mx-auto overflow-hidden">
+                        <div class="modal-header bg-orange-500 text-white px-4 py-3 flex justify-between items-center">
+                            <h3 class="text-lg font-semibold">臨時請假申請</h3>
+                            <button class="modal-close text-white hover:text-gray-200">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="leave-form" class="space-y-4">
+                                <div class="form-group">
+                                    <label for="leave-reason-type" class="block text-sm font-medium text-gray-700 mb-1">請假事由</label>
+                                    <select id="leave-reason-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                        <option value="病假">病假</option>
+                                        <option value="事假">事假</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </div>
+                                
+                                <div id="other-reason-container" class="form-group hidden">
+                                    <label for="other-reason" class="block text-sm font-medium text-gray-700 mb-1">其他事由</label>
+                                    <input type="text" id="other-reason" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="請輸入請假事由">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="leave-start-time" class="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
+                                    <input type="datetime-local" id="leave-start-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${formattedNow}">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="leave-end-time" class="block text-sm font-medium text-gray-700 mb-1">結束時間</label>
+                                    <input type="datetime-local" id="leave-end-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${formattedTomorrow}">
+                                </div>
+                                
+                                <div class="flex justify-end space-x-2 pt-2">
+                                    <button type="button" id="leave-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
+                                    <button type="submit" id="leave-submit-btn" class="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600">提交申請</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                lucide.createIcons();
+                
+                // 事由選擇變更事件
+                const reasonTypeSelect = document.getElementById('leave-reason-type');
+                const otherReasonContainer = document.getElementById('other-reason-container');
+                
+                reasonTypeSelect.addEventListener('change', () => {
+                    if (reasonTypeSelect.value === '其他') {
+                        otherReasonContainer.classList.remove('hidden');
+                    } else {
+                        otherReasonContainer.classList.add('hidden');
+                    }
+                });
+                
+                // 關閉按鈕事件
+                document.querySelector('.modal-close').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+                
+                // 取消按鈕事件
+                document.getElementById('leave-cancel-btn').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+                
+                // 表單提交事件
+                document.getElementById('leave-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const reasonType = reasonTypeSelect.value;
+                    let reason = reasonType;
+                    
+                    if (reasonType === '其他') {
+                        const otherReason = document.getElementById('other-reason').value.trim();
+                        if (!otherReason) {
+                            showToast('請輸入請假事由', true);
+                            return;
+                        }
+                        reason = otherReason;
+                    }
+                    
+                    const startTime = new Date(document.getElementById('leave-start-time').value);
+                    const endTime = new Date(document.getElementById('leave-end-time').value);
+                    
+                    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                        showToast('請選擇有效的時間', true);
+                        return;
+                    }
+                    
+                    if (startTime >= endTime) {
+                        showToast('結束時間必須晚於開始時間', true);
+                        return;
+                    }
+                    
+                    try {
+                        showLoading(true);
+                        
+                        // 創建請假記錄
+                        await firebase.firestore().collection('leaves').add({
+                            userId: firebase.auth().currentUser.uid,
+                            userName: state.currentUserData.name,
+                            reason: reason,
+                            reasonType: reasonType,
+                            startTime: firebase.firestore.Timestamp.fromDate(startTime),
+                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                            status: 'pending',
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        // 更新用戶狀態
+                        await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                            status: '請假中',
+                            leaveStatus: 'pending',
+                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        showToast('請假申請已提交，等待審核');
+                        updateStatusDisplay();
+                        document.body.removeChild(modal);
+                    } catch (error) {
+                        console.error('提交請假申請失敗:', error);
+                        showToast('提交請假申請失敗，請稍後再試', true);
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+            }
+            
+            // 特殊勤務表單
+            function openSpecialDutyModal() {
+                const modal = document.createElement('div');
+                modal.className = 'modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
+                modal.id = 'special-duty-modal';
+                
+                const now = new Date();
+                const formattedNow = now.toISOString().slice(0, 16); // 格式為 YYYY-MM-DDTHH:MM
+                const twoHoursLater = new Date(now);
+                twoHoursLater.setHours(twoHoursLater.getHours() + 2);
+                const formattedTwoHoursLater = twoHoursLater.toISOString().slice(0, 16);
+                
+                modal.innerHTML = `
+                    <div class="modal-content bg-white rounded-lg shadow-xl w-11/12 max-w-md mx-auto overflow-hidden">
+                        <div class="modal-header bg-purple-500 text-white px-4 py-3 flex justify-between items-center">
+                            <h3 class="text-lg font-semibold">特殊勤務登記</h3>
+                            <button class="modal-close text-white hover:text-gray-200">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form id="duty-form" class="space-y-4">
+                                <div class="form-group">
+                                    <label for="duty-type" class="block text-sm font-medium text-gray-700 mb-1">勤務項目名稱</label>
+                                    <select id="duty-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                        <option value="例行督察">例行督察</option>
+                                        <option value="簡報">簡報</option>
+                                        <option value="例會">例會</option>
+                                        <option value="區大">區大</option>
+                                        <option value="臨時會">臨時會</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </div>
+                                
+                                <div id="other-duty-container" class="form-group hidden">
+                                    <label for="other-duty" class="block text-sm font-medium text-gray-700 mb-1">其他勤務項目</label>
+                                    <input type="text" id="other-duty" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="請輸入勤務項目名稱">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="duty-location" class="block text-sm font-medium text-gray-700 mb-1">地點</label>
+                                    <div class="flex space-x-2">
+                                        <input type="text" id="duty-location" class="flex-grow border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="請輸入地點">
+                                        <button type="button" id="map-location-btn" class="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center">
+                                            <i data-lucide="map-pin" class="w-5 h-5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="duty-start-time" class="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
+                                    <input type="datetime-local" id="duty-start-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value="${formattedNow}">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="duty-end-time" class="block text-sm font-medium text-gray-700 mb-1">結束時間</label>
+                                    <input type="datetime-local" id="duty-end-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value="${formattedTwoHoursLater}">
+                                </div>
+                                
+                                <div class="flex justify-end space-x-2 pt-2">
+                                    <button type="button" id="duty-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
+                                    <button type="submit" id="duty-submit-btn" class="px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600">提交登記</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                lucide.createIcons();
+                
+                // 勤務項目選擇變更事件
+                const dutyTypeSelect = document.getElementById('duty-type');
+                const otherDutyContainer = document.getElementById('other-duty-container');
+                
+                dutyTypeSelect.addEventListener('change', () => {
+                    if (dutyTypeSelect.value === '其他') {
+                        otherDutyContainer.classList.remove('hidden');
+                    } else {
+                        otherDutyContainer.classList.add('hidden');
+                    }
+                });
+                
+                // 地圖位置按鈕事件
+                document.getElementById('map-location-btn').addEventListener('click', () => {
+                    if (state.currentLocation) {
+                        // 使用反向地理編碼獲取地址
+                        const geocoder = new google.maps.Geocoder();
+                        const latlng = { lat: state.currentLocation.lat, lng: state.currentLocation.lng };
+                        
+                        geocoder.geocode({ location: latlng }, (results, status) => {
+                            if (status === 'OK' && results[0]) {
+                                document.getElementById('duty-location').value = results[0].formatted_address;
+                            } else {
+                                document.getElementById('duty-location').value = `${state.currentLocation.lat}, ${state.currentLocation.lng}`;
+                            }
+                        });
+                    } else {
+                        showToast('無法獲取當前位置', true);
+                    }
+                });
+                
+                // 關閉按鈕事件
+                document.querySelector('.modal-close').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+                
+                // 取消按鈕事件
+                document.getElementById('duty-cancel-btn').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+                
+                // 表單提交事件
+                document.getElementById('duty-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const dutyType = dutyTypeSelect.value;
+                    let dutyName = dutyType;
+                    
+                    if (dutyType === '其他') {
+                        const otherDuty = document.getElementById('other-duty').value.trim();
+                        if (!otherDuty) {
+                            showToast('請輸入勤務項目名稱', true);
+                            return;
+                        }
+                        dutyName = otherDuty;
+                    }
+                    
+                    const location = document.getElementById('duty-location').value.trim();
+                    if (!location) {
+                        showToast('請輸入地點', true);
+                        return;
+                    }
+                    
+                    const startTime = new Date(document.getElementById('duty-start-time').value);
+                    const endTime = new Date(document.getElementById('duty-end-time').value);
+                    
+                    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                        showToast('請選擇有效的時間', true);
+                        return;
+                    }
+                    
+                    if (startTime >= endTime) {
+                        showToast('結束時間必須晚於開始時間', true);
+                        return;
+                    }
+                    
+                    try {
+                        showLoading(true);
+                        
+                        // 創建特殊勤務記錄
+                        await firebase.firestore().collection('specialDuties').add({
+                            userId: firebase.auth().currentUser.uid,
+                            userName: state.currentUserData.name,
+                            dutyName: dutyName,
+                            dutyType: dutyType,
+                            location: location,
+                            startTime: firebase.firestore.Timestamp.fromDate(startTime),
+                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        // 更新用戶狀態
+                        await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                            status: `出勤-${dutyName}`,
+                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        // 保存地點到設定
+                        if (!state.savedLocations) {
+                            state.savedLocations = [];
+                        }
+                        
+                        // 檢查是否已存在相同地點
+                        const locationExists = state.savedLocations.some(loc => loc === location);
+                        if (!locationExists) {
+                            state.savedLocations.push(location);
+                            // 最多保存10個地點
+                            if (state.savedLocations.length > 10) {
+                                state.savedLocations.shift();
+                            }
+                            
+                            // 保存到用戶設定
+                            await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                                savedLocations: state.savedLocations
+                            });
+                        }
+                        
+                        showToast('特殊勤務已登記');
+                        updateStatusDisplay();
+                        document.body.removeChild(modal);
+                    } catch (error) {
+                        console.error('提交特殊勤務登記失敗:', error);
+                        showToast('提交特殊勤務登記失敗，請稍後再試', true);
+                    } finally {
+                        showLoading(false);
+                    }
                 });
             }
 
@@ -1086,15 +1431,262 @@
             
             function renderTrackingLeave(container) {
                 container.innerHTML = `
-                    <div class="p-4 flex flex-col items-center justify-center h-full">
-                        <div class="text-center">
-                            <i data-lucide="construction" class="w-16 h-16 text-gray-400 mx-auto mb-4"></i>
-                            <h2 class="text-xl font-semibold text-gray-700 mb-2">假單審核功能開發中</h2>
-                            <p class="text-gray-500">此功能正在開發中，敬請期待！</p>
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="leave-status-filter" class="text-sm font-medium">審核狀態:</label>
+                                <select id="leave-status-filter" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all">全部</option>
+                                    <option value="pending" selected>待審核</option>
+                                    <option value="approved">已核准</option>
+                                    <option value="rejected">已拒絕</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="leave-date-filter" class="text-sm font-medium">日期:</label>
+                                <input type="date" id="leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <button id="leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
+                                <i data-lucide="search" class="w-4 h-4 mr-1"></i>搜尋
+                            </button>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">請假人</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">事由</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">開始時間</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">結束時間</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leave-records-list" class="bg-white divide-y divide-gray-200">
+                                        <tr>
+                                            <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                                                <div class="flex items-center justify-center">
+                                                    <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                                    載入中...
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div id="no-leave-records" class="hidden p-8 text-center text-gray-500 bg-white rounded-lg shadow">
+                            <i data-lucide="calendar-off" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                            <p>沒有符合條件的請假記錄</p>
                         </div>
                     </div>
                 `;
+                
                 lucide.createIcons();
+                
+                // 獲取元素
+                const statusFilter = document.getElementById('leave-status-filter');
+                const dateFilter = document.getElementById('leave-date-filter');
+                const searchBtn = document.getElementById('leave-search-btn');
+                
+                // 初始加載數據
+                loadLeaveRecords();
+                
+                // 添加搜尋按鈕事件
+                searchBtn.addEventListener('click', () => {
+                    loadLeaveRecords();
+                });
+                
+                // 加載請假記錄
+                function loadLeaveRecords() {
+                    const recordsList = document.getElementById('leave-records-list');
+                    const noRecordsMsg = document.getElementById('no-leave-records');
+                    
+                    recordsList.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                                <div class="flex items-center justify-center">
+                                    <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                    載入中...
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    lucide.createIcons();
+                    
+                    // 獲取過濾條件
+                    const status = statusFilter.value;
+                    const date = dateFilter.value;
+                    
+                    // 構建查詢
+                    let leavesQuery = firebase.firestore().collection('leaves');
+                    
+                    // 如果選擇了特定狀態
+                    if (status !== 'all') {
+                        leavesQuery = leavesQuery.where('status', '==', status);
+                    }
+                    
+                    // 按創建時間排序
+                    leavesQuery = leavesQuery.orderBy('createdAt', 'desc');
+                    
+                    // 執行查詢
+                    leavesQuery.get().then((querySnapshot) => {
+                        if (querySnapshot.empty) {
+                            recordsList.innerHTML = '';
+                            noRecordsMsg.classList.remove('hidden');
+                            return;
+                        }
+                        
+                        noRecordsMsg.classList.add('hidden');
+                        recordsList.innerHTML = '';
+                        
+                        // 日期過濾
+                        const selectedDate = date ? new Date(date) : null;
+                        if (selectedDate) {
+                            selectedDate.setHours(0, 0, 0, 0);
+                            const nextDay = new Date(selectedDate);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                        }
+                        
+                        let hasRecords = false;
+                        
+                        querySnapshot.forEach((doc) => {
+                            const leave = doc.data();
+                            const leaveId = doc.id;
+                            
+                            // 如果選擇了日期，檢查請假時間是否在所選日期範圍內
+                            if (selectedDate) {
+                                const startTime = leave.startTime.toDate();
+                                const endTime = leave.endTime.toDate();
+                                
+                                // 檢查請假時間是否與所選日期有重疊
+                                if (!(startTime < nextDay && endTime > selectedDate)) {
+                                    return; // 跳過不符合日期條件的記錄
+                                }
+                            }
+                            
+                            hasRecords = true;
+                            
+                            const startTime = leave.startTime.toDate().toLocaleString('zh-TW');
+                            const endTime = leave.endTime.toDate().toLocaleString('zh-TW');
+                            
+                            let statusBadge = '';
+                            switch (leave.status) {
+                                case 'pending':
+                                    statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">待審核</span>';
+                                    break;
+                                case 'approved':
+                                    statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">已核准</span>';
+                                    break;
+                                case 'rejected':
+                                    statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">已拒絕</span>';
+                                    break;
+                                default:
+                                    statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">未知</span>';
+                            }
+                            
+                            const row = document.createElement('tr');
+                            row.className = 'hover:bg-gray-50';
+                            row.innerHTML = `
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="text-sm font-medium text-gray-900">${leave.userName || '未知用戶'}</div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${leave.reason || '無事由'}</div>
+                                    <div class="text-xs text-gray-500">${leave.reasonType || ''}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${startTime}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${endTime}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    ${statusBadge}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    ${leave.status === 'pending' ? `
+                                        <button data-leave-id="${leaveId}" data-action="approve" class="text-green-600 hover:text-green-900 mr-3">
+                                            <i data-lucide="check-circle" class="w-5 h-5"></i>
+                                        </button>
+                                        <button data-leave-id="${leaveId}" data-action="reject" class="text-red-600 hover:text-red-900">
+                                            <i data-lucide="x-circle" class="w-5 h-5"></i>
+                                        </button>
+                                    ` : ''}
+                                </td>
+                            `;
+                            
+                            recordsList.appendChild(row);
+                        });
+                        
+                        lucide.createIcons();
+                        
+                        if (!hasRecords) {
+                            recordsList.innerHTML = '';
+                            noRecordsMsg.classList.remove('hidden');
+                        }
+                        
+                        // 添加審核按鈕事件
+                        document.querySelectorAll('[data-leave-id]').forEach(btn => {
+                            btn.addEventListener('click', async (e) => {
+                                const leaveId = e.currentTarget.dataset.leaveId;
+                                const action = e.currentTarget.dataset.action;
+                                
+                                try {
+                                    showLoading(true);
+                                    
+                                    // 獲取請假記錄
+                                    const leaveDoc = await firebase.firestore().collection('leaves').doc(leaveId).get();
+                                    if (!leaveDoc.exists) {
+                                        showToast('找不到請假記錄', true);
+                                        return;
+                                    }
+                                    
+                                    const leaveData = leaveDoc.data();
+                                    const userId = leaveData.userId;
+                                    
+                                    // 更新請假記錄狀態
+                                    await firebase.firestore().collection('leaves').doc(leaveId).update({
+                                        status: action === 'approve' ? 'approved' : 'rejected',
+                                        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                                        reviewedBy: firebase.auth().currentUser.uid
+                                    });
+                                    
+                                    // 如果核准，更新用戶狀態
+                                    if (action === 'approve') {
+                                        await firebase.firestore().collection('users').doc(userId).update({
+                                            leaveStatus: 'approved'
+                                        });
+                                    }
+                                    
+                                    showToast(`已${action === 'approve' ? '核准' : '拒絕'}請假申請`);
+                                    
+                                    // 重新加載記錄
+                                    loadLeaveRecords();
+                                } catch (error) {
+                                    console.error('處理請假申請失敗:', error);
+                                    showToast('處理請假申請失敗，請稍後再試', true);
+                                } finally {
+                                    showLoading(false);
+                                }
+                            });
+                        });
+                    }).catch(error => {
+                        console.error('獲取請假記錄失敗:', error);
+                        recordsList.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="px-6 py-4 text-center text-red-500">
+                                    讀取記錄失敗，請稍後再試
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
             }
             
             function renderTrackingReports(container) {
@@ -2225,8 +2817,8 @@
                                 <!-- 請假資訊 -->
                                 <div class="border-t pt-4">
                                     <h4 class="font-semibold mb-2">請假資訊</h4>
-                                    <div id="leave-status" class="p-3 rounded-lg text-center bg-gray-100 text-gray-800">
-                                        無請假紀錄
+                                    <div id="leave-status" class="p-3 rounded-lg text-center ${state.currentUserData.clockInStatus === '臨時請假' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}">
+                                        ${renderLeaveInfo(state.currentUserData)}
                                     </div>
                                 </div>
                             </div>
@@ -2342,8 +2934,27 @@
                     showToast("您已成功登出");
                 });
             }
-            
-             function openAvatarCameraModal(callback) {
+
+            function renderLeaveInfo(userData) {
+                if (userData.clockInStatus !== '臨時請假') {
+                    return '目前沒有請假記錄';
+                }
+                
+                let statusText = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                let reasonText = userData.leaveReason ? `${userData.leaveReason}` : '';
+                let typeText = userData.reasonType ? `(${userData.reasonType})` : '';
+                
+                let timeInfo = '';
+                if (userData.leaveStartTime && userData.leaveEndTime) {
+                    const startTime = new Date(userData.leaveStartTime.toDate());
+                    const endTime = new Date(userData.leaveEndTime.toDate());
+                    timeInfo = `<div class="text-sm mt-1">從 ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}</div>`;
+                }
+                
+                return `<div class="font-medium">${statusText}: ${reasonText} ${typeText}</div>${timeInfo}`;
+            }
+
+            function openAvatarCameraModal(callback) {
                 const modalId = `avatar-camera-modal-${Date.now()}`;
                 let videoStream;
                 
@@ -2652,6 +3263,71 @@
             }
 
             // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
+            
+            // 渲染請假資訊
+            function renderLeaveInfo(userData) {
+                if (userData.clockInStatus === '臨時請假') {
+                    const leaveStatus = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                    const reason = userData.leaveReason || '未指定原因';
+                    
+                    let startTimeStr = '未指定時間';
+                    let endTimeStr = '未指定時間';
+                    
+                    if (userData.leaveStartTime) {
+                        const startTime = userData.leaveStartTime.toDate ? 
+                            userData.leaveStartTime.toDate() : 
+                            new Date(userData.leaveStartTime);
+                        startTimeStr = startTime.toLocaleString('zh-TW');
+                    }
+                    
+                    if (userData.leaveEndTime) {
+                        const endTime = userData.leaveEndTime.toDate ? 
+                            userData.leaveEndTime.toDate() : 
+                            new Date(userData.leaveEndTime);
+                        endTimeStr = endTime.toLocaleString('zh-TW');
+                    }
+                    
+                    return `
+                        <div class="font-semibold text-lg">${leaveStatus}</div>
+                        <div class="mt-2">
+                            <p><span class="font-medium">事由：</span>${reason}</p>
+                            <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
+                            <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
+                        </div>
+                    `;
+                } else if (userData.clockInStatus === '特殊勤務') {
+                    const dutyName = userData.dutyName || '未指定勤務';
+                    const location = userData.dutyLocation || '未指定地點';
+                    
+                    let startTimeStr = '未指定時間';
+                    let endTimeStr = '未指定時間';
+                    
+                    if (userData.dutyStartTime) {
+                        const startTime = userData.dutyStartTime.toDate ? 
+                            userData.dutyStartTime.toDate() : 
+                            new Date(userData.dutyStartTime);
+                        startTimeStr = startTime.toLocaleString('zh-TW');
+                    }
+                    
+                    if (userData.dutyEndTime) {
+                        const endTime = userData.dutyEndTime.toDate ? 
+                            userData.dutyEndTime.toDate() : 
+                            new Date(userData.dutyEndTime);
+                        endTimeStr = endTime.toLocaleString('zh-TW');
+                    }
+                    
+                    return `
+                        <div class="font-semibold text-lg">出勤-${dutyName}</div>
+                        <div class="mt-2">
+                            <p><span class="font-medium">地點：</span>${location}</p>
+                            <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
+                            <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
+                        </div>
+                    `;
+                } else {
+                    return '無請假紀錄';
+                }
+            }
 
             function showToast(message, isError = false) {
                 toast.textContent = message;
