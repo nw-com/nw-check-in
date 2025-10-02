@@ -2244,8 +2244,23 @@
                 const modal = document.getElementById(modalId);
                 const changePasswordForm = document.getElementById('change-password-form');
                 const logoutBtn = document.getElementById('logout-btn');
+                const avatarUploadInput = document.getElementById('avatar-upload');
 
                 modal.querySelector('.close-btn').addEventListener('click', close);
+                
+                // 添加登出按鈕事件監聽器
+                logoutBtn.addEventListener('click', async () => {
+                    try {
+                        showLoading(true);
+                        await signOut(auth);
+                        showToast("已成功登出");
+                        window.location.reload();
+                    } catch (error) {
+                        console.error("登出失敗:", error);
+                        showToast("登出失敗，請稍後再試", true);
+                        showLoading(false);
+                    }
+                });
 
                 avatarUploadInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
