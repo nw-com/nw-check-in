@@ -277,7 +277,8 @@
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { 
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
-            query, where, getDocs, serverTimestamp, orderBy, GeoPoint, Timestamp, writeBatch
+            query, where, getDocs, serverTimestamp, orderBy, GeoPoint, Timestamp, writeBatch,
+            enableIndexedDbPersistence
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { 
             getStorage, ref, uploadBytes, getDownloadURL, deleteObject
@@ -305,6 +306,17 @@
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             const db = getFirestore(app);
+            
+            // 啟用離線持久化，解決權限問題
+            enableIndexedDbPersistence(db)
+              .catch((err) => {
+                  if (err.code == 'failed-precondition') {
+                      console.log('多個標籤頁同時打開，無法啟用離線持久化');
+                  } else if (err.code == 'unimplemented') {
+                      console.log('當前瀏覽器不支持離線持久化');
+                  }
+              });
+              
             const storage = getStorage(app);
 
             const loginPage = document.getElementById('login-page');
@@ -534,7 +546,28 @@
                     let myStatusFound = false;
                     const users = [];
                     querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
-                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                    users.sort((a, b) => {
+                        // 首先按狀態排序：「上班中」的排在最前面
+                        const statusA = getStatusDisplayText(a.clockInStatus || '未打卡', a.lastLocation);
+                        const statusB = getStatusDisplayText(b.clockInStatus || '未打卡', b.lastLocation);
+                        
+                        if (statusA.includes('上班中') && !statusB.includes('上班中')) {
+                            return -1;
+                        }
+                        if (!statusA.includes('上班中') && statusB.includes('上班中')) {
+                            return 1;
+                        }
+                        
+                        // 如果都是「上班中」狀態，則按打卡時間排序（越早越上面）
+                        if (statusA.includes('上班中') && statusB.includes('上班中')) {
+                            const timeA = a.lastClockInTime ? a.lastClockInTime.toDate() : new Date(0);
+                            const timeB = b.lastClockInTime ? b.lastClockInTime.toDate() : new Date(0);
+                            return timeA - timeB;
+                        }
+                        
+                        // 其他情況按姓名排序
+                        return a.name.localeCompare(b.name, 'zh-Hant');
+                    }).forEach(user => {
                         const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', user.lastLocation);
                         const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
