@@ -753,7 +753,10 @@
                         
                         // 外出打卡需要先輸入地點
                         if (type === "外出") {
-                            openLocationInputModal(type, state.currentLocation);
+                            openLocationInputModal();
+                        } else if (type === "抵達" || type === "離開" || type === "返回") {
+                            // 抵達、離開、返回打卡也需要拍照
+                            openCameraModal(type, state.currentLocation);
                         } else if (type === "臨時請假" || type === "特殊勤務") {
                             // 不執行相機操作
                         } else {
