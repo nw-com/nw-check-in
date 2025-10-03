@@ -12,6 +12,7 @@
     <!-- 自定義腳本 -->
     <script src="js/dashboard-functions.js"></script>
     <script src="js/features.js" defer></script>
+    <script src="js/other.js" defer></script>
     <script src="js/calendar.js" defer></script>
     
     <!-- Firebase SDK -->
@@ -254,6 +255,9 @@
                 <button data-tab="clock-in" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="fingerprint"></i><span class="text-xs mt-1">打卡</span>
                 </button>
+                <button id="nav-other" data-tab="other" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2 hide">
+                    <i data-lucide="ellipsis"></i><span class="text-xs mt-1">其他</span>
+                </button>
                 <button id="nav-tracking" data-tab="tracking" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="map-pin"></i><span class="text-xs mt-1">追蹤</span>
                 </button>
@@ -493,37 +497,59 @@
                 const navSettings = document.getElementById('nav-settings');
                 const navHr = document.getElementById('nav-hr');
                 const navGroup = document.getElementById('nav-group');
+                const navFeatures = document.getElementById('nav-features');
+                const navCalendar = document.getElementById('nav-calendar');
+                const navOther = document.getElementById('nav-other');
+                const navDashboard = document.querySelector('.tab-btn[data-tab="dashboard"]');
+                const navClockIn = document.querySelector('.tab-btn[data-tab="clock-in"]');
 
                 // 導覽顯示權限（擴充角色：admin, manager(高階主管), junior_manager(初階主管), hr, user, field）
                 const role = state.currentUserData.role;
                 [navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
-                if (role === 'admin') {
+
+                if (role === 'field') {
+                    // 外勤：僅顯示「打卡」與「其他」分頁
+                    [navDashboard, navFeatures, navCalendar, navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
+                    if (navClockIn) navClockIn.classList.remove('hide');
+                    if (navOther) navOther.classList.remove('hide');
+                } else if (role === 'admin') {
                     // 管理員：顯示追蹤、設定、人事；不顯示群組（依需求）
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
                     navHr.classList.remove('hide');
+                    if (navOther) navOther.classList.add('hide');
                 } else if (role === 'manager') {
                     // 高階主管：顯示追蹤
                     navTracking.classList.remove('hide');
+                    if (navOther) navOther.classList.add('hide');
                 } else if (role === 'junior_manager') {
                     // 初階主管：不顯示追蹤；僅顯示群組
                     // navTracking 保持隱藏
                     navGroup.classList.remove('hide');
+                    if (navOther) navOther.classList.add('hide');
                 } else if (role === 'hr') {
                     // 人事：顯示追蹤與人事
                     navTracking.classList.remove('hide');
                     navHr.classList.remove('hide');
+                    if (navOther) navOther.classList.add('hide');
                 } else {
-                    // user/field：不顯示追蹤、設定、HR、群組
+                    // 內勤/一般使用者：不顯示追蹤、設定、HR、群組；不顯示「其他」分頁
+                    if (navOther) navOther.classList.add('hide');
                 }
                 
                 loginPage.classList.add('hide');
                 appContainer.classList.remove('hide');
                 
                 document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-                document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
-                
-                showPage('dashboard');
+                if (role === 'field') {
+                    // 外勤預設進入「打卡」頁
+                    const clockBtn = document.querySelector('.tab-btn[data-tab="clock-in"]');
+                    if (clockBtn) clockBtn.classList.add('active');
+                    showPage('clock-in');
+                } else {
+                    document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
+                    showPage('dashboard');
+                }
                 showLoading(false);
             }
 
@@ -563,6 +589,7 @@
                     'clock-in': () => renderClockIn(subPage || 'location'),
                     'tracking': () => ['admin','manager','hr'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news'),
+                    'other': () => state.currentUserData.role === 'field' ? renderOther(subPage || 'news') : renderAccessDenied(),
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
                     'hr': () => (state.currentUserData.role === 'admin' || state.currentUserData.role === 'hr') ? renderHR(subPage || 'attendance') : renderAccessDenied(),
