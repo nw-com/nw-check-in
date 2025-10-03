@@ -697,6 +697,7 @@
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位打卡</button>
                         <button data-subtab="records" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">打卡紀錄</button>
+                        <button data-subtab="leaves" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leaves' ? 'active' : ''}">請假紀錄</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -705,6 +706,8 @@
                     renderClockInLocation(subPageContent);
                 } else if (subPage === 'records') {
                     renderClockInRecords(subPageContent);
+                } else if (subPage === 'leaves') {
+                    renderMyLeaveRecords(subPageContent);
                 }
                 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('clock-in', btn.dataset.subtab)));
@@ -726,10 +729,7 @@
                         <div id="clock-in-buttons" class="grid grid-cols-2 gap-2 pt-4">
                             <button data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
                             <button data-type="下班" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-red-600">下班打卡</button>
-                            <button data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
-                            <button data-type="返回" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-teal-600">返回打卡</button>
-                            <button data-type="抵達" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">抵達打卡</button>
-                            <button data-type="離開" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-yellow-600">離開打卡</button>
+                            <button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
                             <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600">臨時請假</button>
                             <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-purple-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">特殊勤務</button>
                         </div>
@@ -849,6 +849,188 @@
                 document.getElementById('special-duty-btn').addEventListener('click', () => {
                     openSpecialDutyModal();
                 });
+            }
+
+            // 個人請假紀錄子頁籤
+            function renderMyLeaveRecords(container) {
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="my-leave-status-filter" class="text-sm font-medium">審核狀態:</label>
+                                <select id="my-leave-status-filter" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all" selected>全部</option>
+                                    <option value="pending">待審核</option>
+                                    <option value="approved">已核准</option>
+                                    <option value="rejected">已拒絕</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="my-leave-date-filter" class="text-sm font-medium">日期:</label>
+                                <input type="date" id="my-leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <button id="my-leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
+                                <i data-lucide="search" class="w-4 h-4 mr-1"></i>搜尋
+                            </button>
+                        </div>
+                        <div class="bg-white rounded-lg shadow overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">事由</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">開始時間</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">結束時間</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="my-leave-records-list" class="bg-white divide-y divide-gray-200">
+                                        <tr>
+                                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                                <div class="flex items-center justify-center">
+                                                    <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                                    載入中...
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="no-my-leave-records" class="hidden p-8 text-center text-gray-500 bg-white rounded-lg shadow">
+                            <i data-lucide="calendar-off" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                            <p>沒有符合條件的請假記錄</p>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+
+                const statusFilter = document.getElementById('my-leave-status-filter');
+                const dateFilter = document.getElementById('my-leave-date-filter');
+                const searchBtn = document.getElementById('my-leave-search-btn');
+
+                // 初始加載
+                loadMyLeaveRecords();
+
+                searchBtn.addEventListener('click', loadMyLeaveRecords);
+
+                function getStatusBadge(status) {
+                    switch (status) {
+                        case 'pending':
+                            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">待審核</span>';
+                        case 'approved':
+                            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">已核准</span>';
+                        case 'rejected':
+                            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">已拒絕</span>';
+                        default:
+                            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">未知</span>';
+                    }
+                }
+
+                function loadMyLeaveRecords() {
+                    const recordsList = document.getElementById('my-leave-records-list');
+                    const noRecordsMsg = document.getElementById('no-my-leave-records');
+
+                    recordsList.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                <div class="flex items-center justify-center">
+                                    <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                    載入中...
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    lucide.createIcons();
+
+                    const status = statusFilter.value;
+                    const date = dateFilter.value;
+
+                    const user = firebase.auth().currentUser;
+                    if (!user) {
+                        recordsList.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-500">請先登入以查看請假紀錄</td></tr>';
+                        return;
+                    }
+
+                    let queryRef = firebase.firestore().collection('leaves').where('userId', '==', user.uid);
+                    if (status !== 'all') {
+                        queryRef = queryRef.where('status', '==', status);
+                    }
+                    queryRef = queryRef.orderBy('createdAt', 'desc');
+
+                    queryRef.get().then((querySnapshot) => {
+                        if (querySnapshot.empty) {
+                            recordsList.innerHTML = '';
+                            noRecordsMsg.classList.remove('hidden');
+                            return;
+                        }
+
+                        noRecordsMsg.classList.add('hidden');
+                        recordsList.innerHTML = '';
+
+                        const selectedDate = date ? new Date(date) : null;
+                        let nextDay = null;
+                        if (selectedDate) {
+                            selectedDate.setHours(0, 0, 0, 0);
+                            nextDay = new Date(selectedDate);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                        }
+
+                        let hasRecords = false;
+
+                        querySnapshot.forEach((doc) => {
+                            const leave = doc.data();
+
+                            if (selectedDate && nextDay) {
+                                const startTime = leave.startTime.toDate();
+                                const endTime = leave.endTime.toDate();
+                                if (!(startTime < nextDay && endTime > selectedDate)) {
+                                    return;
+                                }
+                            }
+
+                            hasRecords = true;
+
+                            const startTimeText = leave.startTime.toDate().toLocaleString('zh-TW');
+                            const endTimeText = leave.endTime.toDate().toLocaleString('zh-TW');
+
+                            const row = document.createElement('tr');
+                            row.className = 'hover:bg-gray-50';
+                            row.innerHTML = `
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${leave.reason || '無事由'}</div>
+                                    <div class="text-xs text-gray-500">${leave.reasonType || ''}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${startTimeText}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">${endTimeText}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    ${getStatusBadge(leave.status)}
+                                </td>
+                            `;
+                            recordsList.appendChild(row);
+                        });
+
+                        lucide.createIcons();
+
+                        if (!hasRecords) {
+                            recordsList.innerHTML = '';
+                            noRecordsMsg.classList.remove('hidden');
+                        }
+                    }).catch(error => {
+                        console.error('獲取請假記錄失敗:', error);
+                        recordsList.innerHTML = `
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center text-red-500">
+                                    讀取記錄失敗，請稍後再試
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
             }
             
             // 臨時請假表單

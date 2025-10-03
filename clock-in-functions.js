@@ -279,6 +279,21 @@ function updateButtonStatus() {
     // 臨時請假和特殊勤務按鈕始終保持可按
     enableSpecialButton('臨時請假', 'bg-orange-500');
     enableSpecialButton('特殊勤務', 'bg-purple-500');
+
+    // 複合循環按鈕（外出/抵達/離開/返回）動態設定器
+    const setOutboundCycleButton = (nextType, label, bgClass) => {
+        const cycleBtn = document.getElementById('outbound-cycle-btn');
+        if (!cycleBtn) return;
+        cycleBtn.dataset.type = nextType;
+        cycleBtn.textContent = label;
+        cycleBtn.disabled = false;
+        cycleBtn.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled',
+                                  'bg-blue-500', 'hover:bg-blue-600', 'bg-teal-700', 'hover:bg-teal-800',
+                                  'bg-red-700', 'hover:bg-red-800');
+        if (bgClass) {
+            cycleBtn.classList.add(bgClass);
+        }
+    };
     
     // 根據當前狀態啟用相應按鈕
     switch(state.clockInStatus) {
@@ -287,9 +302,9 @@ function updateButtonStatus() {
             enableButton('上班', 'bg-green-500');
             break;
         case '上班':
-            // 已上班，啟用下班和外出按鈕
+            // 已上班，啟用下班與循環按鈕（下一步：外出）
             enableButton('下班', 'bg-red-500');
-            enableButton('外出', 'bg-blue-500');
+            setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             break;
         case '下班':
             // 已下班，只啟用上班按鈕
@@ -301,22 +316,22 @@ function updateButtonStatus() {
             enableButton('下班', 'bg-red-500');
             break;
         case '外出':
-            // 外出中，啟用抵達按鈕
-            enableButton('抵達', 'bg-teal-700');
+            // 外出中，循環按鈕切換至「抵達」
+            setOutboundCycleButton('抵達', '抵達打卡', 'bg-teal-700');
             break;
         case '抵達':
-            // 已抵達，啟用離開和下班按鈕
-            enableButton('離開', 'bg-red-700');
+            // 已抵達，循環按鈕切換至「離開」，同時可下班
+            setOutboundCycleButton('離開', '離開打卡', 'bg-red-700');
             enableButton('下班', 'bg-red-500');
             break;
         case '離開':
-            // 已離開，啟用返回按鈕
-            enableButton('返回', 'bg-blue-500');
+            // 已離開，循環按鈕切換至「返回」
+            setOutboundCycleButton('返回', '返回打卡', 'bg-blue-500');
             break;
         case '返回':
-            // 已返回，啟用下班按鈕和外出按鈕
+            // 已返回，循環按鈕回到「外出」，同時可下班
             enableButton('下班', 'bg-red-500');
-            enableButton('外出', 'bg-blue-500');
+            setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             break;
         case '臨時請假':
             // 臨時請假中，不啟用其他按鈕
@@ -1299,12 +1314,6 @@ window.checkAllUsersOvertimeStatus = checkAllUsersOvertimeStatus;
 
 // 添加事件監聽器
 document.addEventListener('DOMContentLoaded', function() {
-    // 外出按鈕
-    const outboundButton = document.querySelector('#clock-in-buttons button:nth-child(3)');
-    if (outboundButton) {
-        outboundButton.addEventListener('click', openLocationInputModal);
-    }
-    
     // 初始化打卡按鈕狀態
     setTimeout(initClockInButtonStatus, 1000);
     
