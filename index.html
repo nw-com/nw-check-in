@@ -476,7 +476,7 @@
                 const navHr = document.getElementById('nav-hr');
                 const navGroup = document.getElementById('nav-group');
 
-                // 導覽顯示權限（擴充角色：admin, manager, junior_manager, hr, user, field）
+                // 導覽顯示權限（擴充角色：admin, manager(高階主管), junior_manager(初階主管), hr, user, field）
                 const role = state.currentUserData.role;
                 [navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
                 if (role === 'admin') {
@@ -484,13 +484,16 @@
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
                     navHr.classList.remove('hide');
-                    // navGroup 保持隱藏
+                } else if (role === 'manager') {
+                    // 高階主管：顯示追蹤
+                    navTracking.classList.remove('hide');
                 } else if (role === 'junior_manager') {
                     // 初階主管：顯示追蹤與群組
                     navTracking.classList.remove('hide');
                     navGroup.classList.remove('hide');
                 } else if (role === 'hr') {
-                    // 人事：僅顯示人事頁籤
+                    // 人事：顯示追蹤與人事
+                    navTracking.classList.remove('hide');
                     navHr.classList.remove('hide');
                 } else {
                     // user/field：不顯示追蹤、設定、HR、群組
@@ -540,11 +543,11 @@
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => ['admin','manager','junior_manager'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
+                    'tracking': () => ['admin','manager','junior_manager','hr'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news'),
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
-                    'hr': () => state.currentUserData.role === 'admin' ? renderHR(subPage || 'attendance') : renderAccessDenied(),
+                    'hr': () => (state.currentUserData.role === 'admin' || state.currentUserData.role === 'hr') ? renderHR(subPage || 'attendance') : renderAccessDenied(),
                     'group': () => state.currentUserData.role === 'junior_manager' ? renderGroup(subPage || 'map') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
@@ -943,11 +946,12 @@
                                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">開始時間</th>
                                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">結束時間</th>
                                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody id="my-leave-records-list" class="bg-white divide-y divide-gray-200">
                                         <tr>
-                                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">
                                                 <div class="flex items-center justify-center">
                                                     <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
                                                     載入中...
@@ -983,6 +987,8 @@
                             return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">已核准</span>';
                         case 'rejected':
                             return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">已拒絕</span>';
+                        case 'canceled':
+                            return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-200 text-gray-700">已取消</span>';
                         default:
                             return '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">未知</span>';
                     }
@@ -994,7 +1000,7 @@
 
                     recordsList.innerHTML = `
                         <tr>
-                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">
                                 <div class="flex items-center justify-center">
                                     <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
                                     載入中...
@@ -1041,7 +1047,7 @@
                         const leaves = [];
 
                         querySnapshot.forEach((doc) => {
-                            const leave = doc.data();
+                            const leave = { id: doc.id, ...doc.data() };
                             leaves.push(leave);
                         });
 
@@ -1080,11 +1086,43 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     ${getStatusBadge(leave.status)}
                                 </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    ${leave.status === 'pending' ? '<button class="cancel-leave-btn bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded text-xs" data-id="'+(leave.id||'')+'">取消</button>' : ''}
+                                </td>
                             `;
                             recordsList.appendChild(row);
                         });
 
                         lucide.createIcons();
+
+                        // 綁定取消事件（僅顯示於待審核）
+                        recordsList.querySelectorAll('.cancel-leave-btn').forEach(btn => {
+                            btn.addEventListener('click', async (e) => {
+                                const id = e.currentTarget.dataset.id;
+                                if (!id) {
+                                    showToast('無法識別假單ID', true);
+                                    return;
+                                }
+                                if (!confirm('確定要取消這筆假單嗎？')) return;
+                                try {
+                                    const db = firebase.firestore();
+                                    const user = firebase.auth().currentUser;
+                                    await db.collection('leaves').doc(id).update({ status: 'canceled', canceledAt: new Date() });
+                                    if (user) {
+                                        await db.collection('users').doc(user.uid).update({
+                                            leaveStatus: 'canceled',
+                                            status: '未打卡',
+                                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                                        });
+                                    }
+                                    showToast('已取消假單');
+                                    loadMyLeaveRecords();
+                                } catch (err) {
+                                    console.error('取消假單失敗', err);
+                                    showToast('取消失敗：'+ (err.message||''), true);
+                                }
+                            });
+                        });
 
                         if (!hasRecords) {
                             recordsList.innerHTML = '';
@@ -2142,6 +2180,7 @@
                                     <option value="pending">待審核</option>
                                     <option value="approved">已核准</option>
                                     <option value="rejected">已拒絕</option>
+                                    <option value="canceled">已取消</option>
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
@@ -2286,6 +2325,9 @@
                                     break;
                                 case 'rejected':
                                     statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">已拒絕</span>';
+                                    break;
+                                case 'canceled':
+                                    statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-200 text-gray-700">已取消</span>';
                                     break;
                                 default:
                                     statusBadge = '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">未知</span>';

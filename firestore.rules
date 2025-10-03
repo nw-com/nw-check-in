@@ -45,8 +45,17 @@ service cloud.firestore {
     match /leaves/{leaveId} {
       allow create: if request.auth != null;
       allow read: if request.auth != null;
-      // 允許管理員更新請假申請狀態（審核功能）
-      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // 使用者可取消自己待審核的請假（僅 pending -> canceled）
+      allow update: if (
+        // 管理員可更新任意請假申請
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      ) || (
+        // 本人可將自己提交且為 pending 的假單取消（更新為 canceled）
+        request.auth.uid == resource.data.userId &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'canceled' &&
+        request.resource.data.keys().hasOnly(['status', 'canceledAt'])
+      );
       allow delete: if false;
     }
     
