@@ -281,7 +281,7 @@
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { 
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
-            query, where, getDocs, serverTimestamp, orderBy, GeoPoint, Timestamp, writeBatch,
+            query, where, getDocs, serverTimestamp, orderBy, limit, GeoPoint, Timestamp, writeBatch,
             enableIndexedDbPersistence
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { 
@@ -867,7 +867,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <label for="my-leave-date-filter" class="text-sm font-medium">日期:</label>
-                                <input type="date" id="my-leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="${new Date().toISOString().split('T')[0]}">
+                                <input type="date" id="my-leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="">
                             </div>
                             <button id="my-leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
                                 <i data-lucide="search" class="w-4 h-4 mr-1"></i>搜尋
@@ -1040,10 +1040,9 @@
                 modal.id = 'temp-leave-modal';
                 
                 const now = new Date();
-                const formattedNow = now.toISOString().slice(0, 16); // 格式為 YYYY-MM-DDTHH:MM
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                const formattedTomorrow = tomorrow.toISOString().slice(0, 16);
+                const todayStr = now.toISOString().split('T')[0];
+                const currentHour = now.getHours();
+                const defaultEndHour = Math.min(currentHour + 2, 23);
                 
                 modal.innerHTML = `
                     <div class="modal-content bg-white rounded-lg shadow-xl w-11/12 max-w-md mx-auto overflow-hidden">
@@ -1069,14 +1068,23 @@
                                     <input type="text" id="other-reason" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="請輸入請假事由">
                                 </div>
                                 
-                                <div class="form-group">
-                                    <label for="leave-start-time" class="block text-sm font-medium text-gray-700 mb-1">開始時間</label>
-                                    <input type="datetime-local" id="leave-start-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${formattedNow}">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="leave-end-time" class="block text-sm font-medium text-gray-700 mb-1">結束時間</label>
-                                    <input type="datetime-local" id="leave-end-time" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${formattedTomorrow}">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div class="form-group">
+                                        <label for="leave-start-date" class="block text-sm font-medium text-gray-700 mb-1">開始日期</label>
+                                        <input type="date" id="leave-start-date" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${todayStr}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="leave-start-hour" class="block text-sm font-medium text-gray-700 mb-1">開始小時</label>
+                                        <input type="number" id="leave-start-hour" min="0" max="23" step="1" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${currentHour}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="leave-end-date" class="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                                        <input type="date" id="leave-end-date" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${todayStr}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="leave-end-hour" class="block text-sm font-medium text-gray-700 mb-1">結束小時</label>
+                                        <input type="number" id="leave-end-hour" min="0" max="23" step="1" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" value="${defaultEndHour}">
+                                    </div>
                                 </div>
                                 
                                 <div class="flex justify-end space-x-2 pt-2">
@@ -1128,9 +1136,20 @@
                         }
                         reason = otherReason;
                     }
-                    
-                    const startTime = new Date(document.getElementById('leave-start-time').value);
-                    const endTime = new Date(document.getElementById('leave-end-time').value);
+                    // 取得日期與小時，組合為時間
+                    const startDateStr = document.getElementById('leave-start-date').value;
+                    const endDateStr = document.getElementById('leave-end-date').value;
+                    const startHour = parseInt(document.getElementById('leave-start-hour').value, 10);
+                    const endHour = parseInt(document.getElementById('leave-end-hour').value, 10);
+
+                    if (!startDateStr || !endDateStr || isNaN(startHour) || isNaN(endHour)) {
+                        showToast('請選擇有效的日期與小時', true);
+                        return;
+                    }
+                    const startTime = new Date(`${startDateStr}T00:00:00`);
+                    startTime.setHours(startHour, 0, 0, 0);
+                    const endTime = new Date(`${endDateStr}T00:00:00`);
+                    endTime.setHours(endHour, 0, 0, 0);
                     
                     if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
                         showToast('請選擇有效的時間', true);
@@ -1145,7 +1164,7 @@
                     try {
                         showLoading(true);
                         
-                        // 創建請假記錄
+                        // 創建請假記錄（以小時為單位）
                         await firebase.firestore().collection('leaves').add({
                             userId: firebase.auth().currentUser.uid,
                             userName: state.currentUserData.name,
@@ -1781,15 +1800,15 @@
                             <div class="flex items-center space-x-2">
                                 <label for="leave-status-filter" class="text-sm font-medium">審核狀態:</label>
                                 <select id="leave-status-filter" class="border border-gray-300 rounded-md px-2 py-1">
-                                    <option value="all">全部</option>
-                                    <option value="pending" selected>待審核</option>
+                                    <option value="all" selected>全部</option>
+                                    <option value="pending">待審核</option>
                                     <option value="approved">已核准</option>
                                     <option value="rejected">已拒絕</option>
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
                                 <label for="leave-date-filter" class="text-sm font-medium">日期:</label>
-                                <input type="date" id="leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="${new Date().toISOString().split('T')[0]}">
+                                <input type="date" id="leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="">
                             </div>
                             <button id="leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
                                 <i data-lucide="search" class="w-4 h-4 mr-1"></i>搜尋
@@ -2105,7 +2124,7 @@
                                     <p class="text-xs text-gray-500">${getStatusDisplayText(user.status, user.lastLocation?.address) || '未打卡'}</p>
                                 </div>
                             </div>
-                            <span class="text-xs text-gray-400">${user.lastClockInTime ? timeAgo(user.lastClockInTime.toDate()) : '無紀錄'}</span>
+                            <span class="text-xs text-gray-400">${user.lastClockInTime ? '最近狀態時間：' + timeAgo(user.lastClockInTime.toDate()) : '無紀錄'}</span>
                         `;
                         userListEl.appendChild(userElement);
 
@@ -2128,7 +2147,7 @@
                                     <div class="p-1">
                                         <p class="font-bold">${user.name}</p>
                                         <p>狀態: ${getStatusDisplayText(user.status, user.lastLocation?.address)}</p>
-                                        <p>時間: ${user.lastClockInTime ? user.lastClockInTime.toDate().toLocaleTimeString('zh-TW') : 'N/A'}</p>
+                                        <p>最近狀態時間: ${user.lastClockInTime ? formatDateTime(user.lastClockInTime) : 'N/A'}</p>
                                     </div>
                                 `
                             });
@@ -3470,6 +3489,18 @@
                                         ${renderLeaveInfo(state.currentUserData)}
                                     </div>
                                 </div>
+
+                                <!-- 打卡時間 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">打卡時間</h4>
+                                    <div id="clock-in-times" class="p-3 rounded-lg bg-gray-50 text-gray-700">載入中...</div>
+                                </div>
+
+                                <!-- 未來請假 -->
+                                <div class="border-t pt-4">
+                                    <h4 class="font-semibold mb-2">未來請假</h4>
+                                    <div id="future-leaves" class="space-y-2"></div>
+                                </div>
                             </div>
 
                             <div class="p-4 border-t">
@@ -3582,6 +3613,126 @@
                     await signOut(auth);
                     showToast("您已成功登出");
                 });
+
+                // 載入打卡時間資訊
+                (async function loadClockInTimes() {
+                    const container = document.getElementById('clock-in-times');
+                    if (!container) return;
+                    try {
+                        const uid = state.currentUser?.uid;
+                        if (!uid) {
+                            container.innerHTML = '<div class="text-sm text-red-600">請先登入</div>';
+                            return;
+                        }
+                        const userSnap = await getDoc(doc(db, "users", uid));
+                        const data = userSnap.exists() ? userSnap.data() : (state.currentUserData || {});
+                        const statusText = data.clockInStatus || '未知';
+
+                        // 最近上班與下班紀錄
+                        const qIn = query(
+                            collection(db, 'clockInRecords'),
+                            where('userId', '==', uid),
+                            where('type', '==', '上班'),
+                            orderBy('timestamp', 'desc'),
+                            limit(1)
+                        );
+                        const qOut = query(
+                            collection(db, 'clockInRecords'),
+                            where('userId', '==', uid),
+                            where('type', '==', '下班'),
+                            orderBy('timestamp', 'desc'),
+                            limit(1)
+                        );
+                        const qAutoOut = query(
+                            collection(db, 'clockInRecords'),
+                            where('userId', '==', uid),
+                            where('type', '==', '自動下班'),
+                            orderBy('timestamp', 'desc'),
+                            limit(1)
+                        );
+
+                        const [inSnap, outSnap, autoOutSnap] = await Promise.all([
+                            getDocs(qIn),
+                            getDocs(qOut),
+                            getDocs(qAutoOut)
+                        ]);
+
+                        const latestIn = inSnap.docs[0]?.data();
+                        const latestOutManual = outSnap.docs[0]?.data();
+                        const latestOutAuto = autoOutSnap.docs[0]?.data();
+                        let latestOut = null;
+                        if (latestOutManual && latestOutAuto) {
+                            const tManual = latestOutManual.timestamp?.toDate?.() || new Date(latestOutManual.timestamp);
+                            const tAuto = latestOutAuto.timestamp?.toDate?.() || new Date(latestOutAuto.timestamp);
+                            latestOut = tManual > tAuto ? latestOutManual : latestOutAuto;
+                        } else {
+                            latestOut = latestOutManual || latestOutAuto;
+                        }
+
+                        const inText = latestIn ? formatDateTime(latestIn.timestamp) : 'N/A';
+                        const outText = latestOut ? formatDateTime(latestOut.timestamp) + (latestOut.type === '自動下班' ? '（自動）' : '') : 'N/A';
+
+                        container.innerHTML = `
+                            <div class="text-sm">目前狀態：${statusText}</div>
+                            <div class="text-sm">上班時間：${inText} / 下班時間：${outText}</div>
+                        `;
+                    } catch (e) {
+                        console.error('載入打卡時間失敗:', e);
+                        container.innerHTML = '<div class="text-sm text-red-600">載入打卡時間失敗</div>';
+                    }
+                })();
+
+                // 載入未來請假清單
+                (async function loadFutureLeaves() {
+                    const container = document.getElementById('future-leaves');
+                    if (!container) return;
+                    try {
+                        const uid = state.currentUser?.uid;
+                        if (!uid) {
+                            container.innerHTML = '<div class="text-sm text-red-600">請先登入</div>';
+                            return;
+                        }
+                        container.innerHTML = '<div class="text-sm text-gray-500">載入中...</div>';
+                        const now = new Date();
+                        const q = query(
+                            collection(db, 'leaves'),
+                            where('userId', '==', uid),
+                            orderBy('createdAt', 'desc')
+                        );
+                        const snap = await getDocs(q);
+                        const future = [];
+                        snap.forEach(d => {
+                            const l = d.data();
+                            if (l.startTime && (l.startTime.toDate ? l.startTime.toDate() : new Date(l.startTime)) >= now) {
+                                future.push({ id: d.id, ...l });
+                            }
+                        });
+                        if (future.length === 0) {
+                            container.innerHTML = '<div class="text-sm text-gray-500">沒有未來請假</div>';
+                            return;
+                        }
+                        future.sort((a, b) => (a.startTime.toDate ? a.startTime.toDate() : new Date(a.startTime)) - (b.startTime.toDate ? b.startTime.toDate() : new Date(b.startTime)));
+                        const statusText = s => (
+                            s === 'pending' ? '待審核' : s === 'approved' ? '已核准' : s === 'rejected' ? '已拒絕' : '未知'
+                        );
+                        const statusClass = s => (
+                            s === 'pending' ? 'bg-yellow-100 text-yellow-800' : s === 'approved' ? 'bg-green-100 text-green-800' : s === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                        );
+                        container.innerHTML = future.map(l => `
+                            <div class="p-3 rounded-md border bg-white">
+                                <div class="text-sm font-medium">
+                                    ${l.reason || '無事由'}
+                                    <span class="ml-2 text-xs px-2 py-0.5 rounded-full ${statusClass(l.status)}">${statusText(l.status)}</span>
+                                </div>
+                                <div class="text-xs text-gray-600 mt-1">從 ${formatDateTime(l.startTime)} 至 ${formatDateTime(l.endTime)}</div>
+                                <div class="text-xs text-gray-500">${l.reasonType || ''}</div>
+                            </div>
+                        `).join('');
+                    } catch (e) {
+                        console.error('載入未來請假失敗:', e);
+                        container.innerHTML = '<div class="text-sm text-red-600">載入未來請假失敗</div>';
+                    }
+                })();
             }
 
             function renderLeaveInfo(userData) {
@@ -3595,8 +3746,8 @@
                 
                 let timeInfo = '';
                 if (userData.leaveStartTime && userData.leaveEndTime) {
-                    const startTime = new Date(userData.leaveStartTime.toDate());
-                    const endTime = new Date(userData.leaveEndTime.toDate());
+                    const startTime = userData.leaveStartTime;
+                    const endTime = userData.leaveEndTime;
                     timeInfo = `<div class="text-sm mt-1">從 ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}</div>`;
                 }
                 
@@ -4031,6 +4182,26 @@
             function formatDate(timestamp) {
                 if (!timestamp) return '';
                 return timestamp.toDate().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
+
+            // 通用日期時間格式化：支援 Firestore Timestamp、Date、字串與數字
+            function formatDateTime(value) {
+                if (!value) return '';
+                let d;
+                try {
+                    if (value && typeof value.toDate === 'function') {
+                        d = value.toDate();
+                    } else if (value instanceof Date) {
+                        d = value;
+                    } else {
+                        d = new Date(value);
+                    }
+                    if (isNaN(d.getTime())) return '';
+                    return d.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                } catch (e) {
+                    console.error('formatDateTime error:', e);
+                    return '';
+                }
             }
         }
 
