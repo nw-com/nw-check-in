@@ -485,8 +485,8 @@
                     navSettings.classList.remove('hide');
                     navHr.classList.remove('hide');
                     // navGroup 保持隱藏
-                } else if (role === 'manager' || role === 'junior_manager') {
-                    // 主管與初階主管：顯示追蹤與群組，隱藏設定與人事
+                } else if (role === 'junior_manager') {
+                    // 初階主管：顯示追蹤與群組
                     navTracking.classList.remove('hide');
                     navGroup.classList.remove('hide');
                 } else if (role === 'hr') {
@@ -545,7 +545,7 @@
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
                     'hr': () => state.currentUserData.role === 'admin' ? renderHR(subPage || 'attendance') : renderAccessDenied(),
-                    'group': () => ['manager','junior_manager'].includes(state.currentUserData.role) ? renderGroup(subPage || 'map') : renderAccessDenied()
+                    'group': () => state.currentUserData.role === 'junior_manager' ? renderGroup(subPage || 'map') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
                 try {
@@ -1017,7 +1017,7 @@
                     if (status !== 'all') {
                         queryRef = queryRef.where('status', '==', status);
                     }
-                    queryRef = queryRef.orderBy('createdAt', 'desc');
+                    // 移除排序以避免 Firestore 索引需求，改用前端排序（若需要）
 
                     queryRef.get().then((querySnapshot) => {
                         if (querySnapshot.empty) {
@@ -1038,20 +1038,29 @@
                         }
 
                         let hasRecords = false;
+                        const leaves = [];
 
                         querySnapshot.forEach((doc) => {
                             const leave = doc.data();
+                            leaves.push(leave);
+                        });
 
+                        // 前端過濾與排序
+                        const filtered = leaves.filter(leave => {
                             if (selectedDate && nextDay) {
                                 const startTime = leave.startTime.toDate();
                                 const endTime = leave.endTime.toDate();
-                                if (!(startTime < nextDay && endTime > selectedDate)) {
-                                    return;
-                                }
+                                return (startTime < nextDay && endTime > selectedDate);
                             }
+                            return true;
+                        }).sort((a, b) => {
+                            const aTs = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                            const bTs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                            return bTs - aTs;
+                        });
 
+                        filtered.forEach(leave => {
                             hasRecords = true;
-
                             const startTimeText = leave.startTime.toDate().toLocaleString('zh-TW');
                             const endTimeText = leave.endTime.toDate().toLocaleString('zh-TW');
 
@@ -1473,15 +1482,14 @@
                 const dateInput = document.getElementById('record-date');
                 const loadRecords = () => {
                     const selectedDate = new Date(dateInput.value);
-                    const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                    const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                    const startOfDay = new Date(selectedDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(selectedDate);
+                    endOfDay.setHours(23, 59, 59, 999);
                     
                     const recordsRef = collection(db, "clockInRecords");
-                    const q = query(recordsRef, 
-                        where("userId", "==", state.currentUser.uid),
-                        where("timestamp", ">=", startOfDay),
-                        where("timestamp", "<=", endOfDay)
-                    );
+                    // 僅依使用者查詢，避免複合索引需求；日期在前端過濾
+                    const q = query(recordsRef, where("userId", "==", state.currentUser.uid));
 
                     const unsubscribe = onSnapshot(q, (querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
@@ -1497,14 +1505,19 @@
                             records.push({ id: doc.id, ...doc.data() });
                         });
                         
-                        records.sort((a, b) => {
-                            const timeA = a.timestamp?.toDate?.() || new Date(0);
-                            const timeB = b.timestamp?.toDate?.() || new Date(0);
+                        // 前端日期過濾與時間降序排序
+                        const filtered = records.filter(r => {
+                            const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
+                            if (!ts) return false;
+                            return ts >= startOfDay && ts <= endOfDay;
+                        }).sort((a, b) => {
+                            const timeA = a.timestamp?.toDate?.() || (a.timestamp ? new Date(a.timestamp) : new Date(0));
+                            const timeB = b.timestamp?.toDate?.() || (b.timestamp ? new Date(b.timestamp) : new Date(0));
                             return timeB - timeA;
                         });
                         
                         recordsListEl.innerHTML = '';
-                        records.forEach(record => {
+                        filtered.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
                             const statusColor = getStatusColor(record.type);
@@ -1843,7 +1856,7 @@
                                     <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
                                     <div class="mt-1 flex items-center">
                                         <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
-                                        ${record.location ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
+                        ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                     </div>
                                     ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
                                 </div>
@@ -2052,7 +2065,7 @@
                                             <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
                                             <div class="mt-1 flex items-center">
                                                 <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
-                                                ${record.location ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
+                        ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                             </div>
                                             ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
                                         </div>
@@ -2529,7 +2542,7 @@
                 container.innerHTML = `
                     <div class="p-4 space-y-4">
                         <h2 class="text-lg font-semibold">群組設定</h2>
-                        <p class="text-sm text-gray-600">將初階主管或主管關聯至可查看的員工名單。</p>
+                        <p class="text-sm text-gray-600">將初階主管關聯至可查看的員工名單。</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div id="manager-select-panel" class="bg-white p-4 rounded-md shadow-sm border">
                                 <h3 class="font-medium mb-2">選擇管理者</h3>
@@ -2555,7 +2568,7 @@
                 const qs = await getDocs(usersRef);
                 const users = [];
                 qs.forEach(docSnap => users.push({ id: docSnap.id, ...docSnap.data() }));
-                const managers = users.filter(u => u.role === 'manager');
+                const managers = users.filter(u => u.role === 'junior_manager');
                 managers.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')).forEach(m => {
                     const opt = document.createElement('option'); opt.value = m.id; opt.textContent = `${m.name}`; managerSelect.appendChild(opt);
                 });
@@ -4035,43 +4048,26 @@
                         const userSnap = await getDoc(doc(db, "users", uid));
                         const data = userSnap.exists() ? userSnap.data() : (state.currentUserData || {});
                         const statusText = data.clockInStatus || '未知';
-
-                        // 最近上班與下班紀錄
-                        const qIn = query(
+                        // 避免索引需求：僅使用 userId 條件，於前端挑選最新紀錄
+                        const qAll = query(
                             collection(db, 'clockInRecords'),
-                            where('userId', '==', uid),
-                            where('type', '==', '上班'),
-                            orderBy('timestamp', 'desc'),
-                            limit(1)
+                            where('userId', '==', uid)
                         );
-                        const qOut = query(
-                            collection(db, 'clockInRecords'),
-                            where('userId', '==', uid),
-                            where('type', '==', '下班'),
-                            orderBy('timestamp', 'desc'),
-                            limit(1)
+                        const allSnap = await getDocs(qAll);
+                        const allRecords = allSnap.docs.map(d => d.data());
+                        const ts = r => (r?.timestamp?.toDate ? r.timestamp.toDate() : (r?.timestamp ? new Date(r.timestamp) : null));
+                        const latestOfType = (type) => (
+                            allRecords
+                                .filter(r => r.type === type && ts(r))
+                                .sort((a,b) => ts(b) - ts(a))[0] || null
                         );
-                        const qAutoOut = query(
-                            collection(db, 'clockInRecords'),
-                            where('userId', '==', uid),
-                            where('type', '==', '自動下班'),
-                            orderBy('timestamp', 'desc'),
-                            limit(1)
-                        );
-
-                        const [inSnap, outSnap, autoOutSnap] = await Promise.all([
-                            getDocs(qIn),
-                            getDocs(qOut),
-                            getDocs(qAutoOut)
-                        ]);
-
-                        const latestIn = inSnap.docs[0]?.data();
-                        const latestOutManual = outSnap.docs[0]?.data();
-                        const latestOutAuto = autoOutSnap.docs[0]?.data();
+                        const latestIn = latestOfType('上班');
+                        const latestOutManual = latestOfType('下班');
+                        const latestOutAuto = latestOfType('自動下班');
                         let latestOut = null;
                         if (latestOutManual && latestOutAuto) {
-                            const tManual = latestOutManual.timestamp?.toDate?.() || new Date(latestOutManual.timestamp);
-                            const tAuto = latestOutAuto.timestamp?.toDate?.() || new Date(latestOutAuto.timestamp);
+                            const tManual = ts(latestOutManual);
+                            const tAuto = ts(latestOutAuto);
                             latestOut = tManual > tAuto ? latestOutManual : latestOutAuto;
                         } else {
                             latestOut = latestOutManual || latestOutAuto;
@@ -4104,8 +4100,7 @@
                         const now = new Date();
                         const q = query(
                             collection(db, 'leaves'),
-                            where('userId', '==', uid),
-                            orderBy('createdAt', 'desc')
+                            where('userId', '==', uid)
                         );
                         const snap = await getDocs(q);
                         const future = [];
@@ -4144,21 +4139,16 @@
             }
 
             function renderLeaveInfo(userData) {
-                if (userData.clockInStatus !== '臨時請假') {
-                    return '目前沒有請假記錄';
-                }
-                
-                let statusText = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
-                let reasonText = userData.leaveReason ? `${userData.leaveReason}` : '';
-                let typeText = userData.reasonType ? `(${userData.reasonType})` : '';
-                
-                let timeInfo = '';
-                if (userData.leaveStartTime && userData.leaveEndTime) {
-                    const startTime = userData.leaveStartTime;
-                    const endTime = userData.leaveEndTime;
-                    timeInfo = `<div class="text-sm mt-1">從 ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}</div>`;
-                }
-                
+                if (!userData) return '目前沒有請假記錄';
+                const isLeave = userData.clockInStatus === '臨時請假' || userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending';
+                if (!isLeave) return '目前沒有請假記錄';
+                const statusText = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                const reasonText = userData.leaveReason ? `${userData.leaveReason}` : '';
+                const typeText = userData.reasonType ? `(${userData.reasonType})` : '';
+                const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+                const startTime = toDate(userData.leaveStartTime);
+                const endTime = toDate(userData.leaveEndTime);
+                const timeInfo = (startTime && endTime) ? `<div class="text-sm mt-1">從 ${formatDateTime(startTime)} 至 ${formatDateTime(endTime)}</div>` : '';
                 return `<div class="font-medium">${statusText}: ${reasonText} ${typeText}</div>${timeInfo}`;
             }
 
@@ -4328,7 +4318,7 @@
                     context.fillStyle = 'rgba(255, 255, 255, 0.7)';
                     const now = new Date();
                     const dateTimeText = `${now.toLocaleDateString('zh-TW')} ${now.toLocaleTimeString('zh-TW')}`;
-                    const locationText = state.currentLocation ? `位置: ${state.currentLocation.lat.toFixed(6)}, ${state.currentLocation.lng.toFixed(6)}` : '無位置資訊';
+                const locationText = (state.currentLocation && typeof state.currentLocation.lat === 'number' && typeof state.currentLocation.lng === 'number') ? `位置: ${state.currentLocation.lat.toFixed(6)}, ${state.currentLocation.lng.toFixed(6)}` : '無位置資訊';
                     const userText = `${state.currentUserData.name} - ${type}打卡`;
                     
                     // 在底部添加浮水印
@@ -4512,69 +4502,63 @@
 
             // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
             
-            // 渲染請假資訊
+            // 渲染請假資訊（第二個版本，使用統一的判斷邏輯）
             function renderLeaveInfo(userData) {
-                if (userData.clockInStatus === '臨時請假') {
-                    const leaveStatus = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
-                    const reason = userData.leaveReason || '未指定原因';
-                    
-                    let startTimeStr = '未指定時間';
-                    let endTimeStr = '未指定時間';
-                    
-                    if (userData.leaveStartTime) {
-                        const startTime = userData.leaveStartTime.toDate ? 
-                            userData.leaveStartTime.toDate() : 
-                            new Date(userData.leaveStartTime);
-                        startTimeStr = startTime.toLocaleString('zh-TW');
+                if (!userData) return '目前沒有請假記錄';
+                const isLeave = userData.clockInStatus === '臨時請假' || userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending';
+                if (!isLeave) {
+                    // 檢查是否為特殊勤務
+                    if (userData.clockInStatus === '特殊勤務') {
+                        const dutyName = userData.dutyName || '未指定勤務';
+                        const location = userData.dutyLocation || '未指定地點';
+                        
+                        let startTimeStr = '未指定時間';
+                        let endTimeStr = '未指定時間';
+                        
+                        if (userData.dutyStartTime) {
+                            const startTime = userData.dutyStartTime.toDate ? 
+                                userData.dutyStartTime.toDate() : 
+                                new Date(userData.dutyStartTime);
+                            startTimeStr = startTime.toLocaleString('zh-TW');
+                        }
+                        
+                        if (userData.dutyEndTime) {
+                            const endTime = userData.dutyEndTime.toDate ? 
+                                userData.dutyEndTime.toDate() : 
+                                new Date(userData.dutyEndTime);
+                            endTimeStr = endTime.toLocaleString('zh-TW');
+                        }
+                        
+                        return `
+                            <div class="font-semibold text-lg">執行特殊勤務</div>
+                            <div class="mt-2">
+                                <p><span class="font-medium">勤務名稱：</span>${dutyName}</p>
+                                <p><span class="font-medium">勤務地點：</span>${location}</p>
+                                <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
+                                <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
+                            </div>
+                        `;
                     }
-                    
-                    if (userData.leaveEndTime) {
-                        const endTime = userData.leaveEndTime.toDate ? 
-                            userData.leaveEndTime.toDate() : 
-                            new Date(userData.leaveEndTime);
-                        endTimeStr = endTime.toLocaleString('zh-TW');
-                    }
-                    
-                    return `
-                        <div class="font-semibold text-lg">${leaveStatus}</div>
-                        <div class="mt-2">
-                            <p><span class="font-medium">事由：</span>${reason}</p>
-                            <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
-                            <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
-                        </div>
-                    `;
-                } else if (userData.clockInStatus === '特殊勤務') {
-                    const dutyName = userData.dutyName || '未指定勤務';
-                    const location = userData.dutyLocation || '未指定地點';
-                    
-                    let startTimeStr = '未指定時間';
-                    let endTimeStr = '未指定時間';
-                    
-                    if (userData.dutyStartTime) {
-                        const startTime = userData.dutyStartTime.toDate ? 
-                            userData.dutyStartTime.toDate() : 
-                            new Date(userData.dutyStartTime);
-                        startTimeStr = startTime.toLocaleString('zh-TW');
-                    }
-                    
-                    if (userData.dutyEndTime) {
-                        const endTime = userData.dutyEndTime.toDate ? 
-                            userData.dutyEndTime.toDate() : 
-                            new Date(userData.dutyEndTime);
-                        endTimeStr = endTime.toLocaleString('zh-TW');
-                    }
-                    
-                    return `
-                        <div class="font-semibold text-lg">出勤-${dutyName}</div>
-                        <div class="mt-2">
-                            <p><span class="font-medium">地點：</span>${location}</p>
-                            <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
-                            <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
-                        </div>
-                    `;
-                } else {
-                    return '無請假紀錄';
+                    return '目前沒有請假記錄';
                 }
+                const leaveStatus = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                const reason = userData.leaveReason || '未指定原因';
+                
+                const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+                const startTime = toDate(userData.leaveStartTime);
+                const endTime = toDate(userData.leaveEndTime);
+                const startTimeStr = startTime ? startTime.toLocaleString('zh-TW') : '未指定時間';
+                const endTimeStr = endTime ? endTime.toLocaleString('zh-TW') : '未指定時間';
+                
+                return `
+                    <div class="font-semibold text-lg">${leaveStatus}</div>
+                    <div class="mt-2">
+                        <p><span class="font-medium">事由：</span>${reason}</p>
+                        <p><span class="font-medium">開始時間：</span>${startTimeStr}</p>
+                        <p><span class="font-medium">結束時間：</span>${endTimeStr}</p>
+                    </div>
+                `;
+            }
             }
 
             function showToast(message, isError = false) {

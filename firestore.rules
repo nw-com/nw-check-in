@@ -75,10 +75,10 @@ service cloud.firestore {
     }
 
     // group：供群組頁載入指定可見成員名單
-    // 管理員與主管可讀，僅管理員可寫
+    // 管理員與初階主管可讀，僅管理員可寫
     match /settings/group {
       allow read: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'junior_manager';
       allow write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
