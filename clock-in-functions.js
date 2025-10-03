@@ -1203,12 +1203,40 @@ async function checkAllUsersOvertimeStatus() {
         if (overtimeUsers.length > 0) {
             console.log(`發現 ${overtimeUsers.length} 位用戶超時：`, overtimeUsers);
             
-            // 可以選擇是否自動為所有超時用戶執行下班打卡
-            // 這裡先只記錄，不自動執行，避免意外操作
+            // 自動為所有超時用戶執行下班打卡並更新狀態
+            for (const ou of overtimeUsers) {
+                try {
+                    const userRef = firebase.firestore().collection('users').doc(ou.userId);
+                    const userDoc = await userRef.get();
+                    const data = userDoc.exists ? userDoc.data() : {};
+                    const lastLocation = data.lastLocation || '系統自動-未知位置';
+                    
+                    const recordData = {
+                        userId: ou.userId,
+                        type: '自動下班',
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        location: lastLocation,
+                        photoUrls: [],
+                        descriptions: [],
+                        isAutomatic: true
+                    };
+                    
+                    await firebase.firestore().collection('clockInRecords').add(recordData);
+                    
+                    await userRef.update({
+                        status: '已下班-未打卡',
+                        clockInStatus: '已下班-未打卡',
+                        autoClockOutTime: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (err) {
+                    console.error(`自動下班處理失敗（${ou.userId}）:`, err);
+                }
+            }
+            
             if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                window.showToast(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`, true);
+                window.showToast(`已自動為 ${overtimeUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
             } else {
-                alert(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`);
+                alert(`已自動為 ${overtimeUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
             }
         } else {
             console.log('沒有發現超時的用戶');
