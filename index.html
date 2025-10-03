@@ -239,6 +239,9 @@
                 <button id="nav-tracking" data-tab="tracking" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="map-pin"></i><span class="text-xs mt-1">追蹤</span>
                 </button>
+                <button id="nav-hr" data-tab="hr" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2 hide">
+                    <i data-lucide="users"></i><span class="text-xs mt-1">人事</span>
+                </button>
                 <button id="nav-features" data-tab="features" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="layers"></i><span class="text-xs mt-1">功能</span>
                 </button>
@@ -247,6 +250,9 @@
                 </button>
                 <button id="nav-settings" data-tab="settings" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="settings"></i><span class="text-xs mt-1">設定</span>
+                </button>
+                <button id="nav-group" data-tab="group" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2 hide">
+                    <i data-lucide="git-branch"></i><span class="text-xs mt-1">群組</span>
                 </button>
             </nav>
         </footer>
@@ -424,17 +430,24 @@
                 
                 const navTracking = document.getElementById('nav-tracking');
                 const navSettings = document.getElementById('nav-settings');
+                const navHr = document.getElementById('nav-hr');
+                const navGroup = document.getElementById('nav-group');
 
-                // 管理員可以看到所有按鈕，主管可以看到追蹤按鈕
-                if (state.currentUserData.role === 'admin') {
+                // 導覽顯示權限（依現有角色：admin、manager、user）
+                const role = state.currentUserData.role;
+                [navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
+                if (role === 'admin') {
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
-                } else if (state.currentUserData.role === 'manager') {
+                    navHr.classList.remove('hide');
+                    navGroup.classList.remove('hide');
+                } else if (role === 'manager') {
                     navTracking.classList.remove('hide');
+                    navGroup.classList.remove('hide');
                     navSettings.classList.add('hide');
+                    navHr.classList.add('hide');
                 } else {
-                    navTracking.classList.add('hide');
-                    navSettings.classList.add('hide');
+                    // user：不顯示追蹤、設定、HR、群組
                 }
                 
                 loginPage.classList.add('hide');
@@ -481,10 +494,12 @@
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => state.currentUserData.role === 'admin' || state.currentUserData.role === 'manager' ? renderTracking(subPage || 'map') : renderAccessDenied(),
+                    'tracking': () => ['admin','manager'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news'),
                     'calendar': () => renderCalendar(subPage || 'overview'),
-                    'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied()
+                    'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
+                    'hr': () => state.currentUserData.role === 'admin' ? renderHR(subPage || 'attendance') : renderAccessDenied(),
+                    'group': () => ['admin','manager'].includes(state.currentUserData.role) ? renderGroup(subPage || 'map') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
                 try {
@@ -1574,6 +1589,270 @@
                 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('tracking', btn.dataset.subtab)));
             }
+
+            // 人事分頁：出勤列表、請假列表
+            function renderHR(subPage) {
+                mainContent.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
+                        <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤列表</button>
+                        <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">請假列表</button>
+                    </div>
+                    <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
+
+                const subPageContent = document.getElementById('sub-page-content');
+                if (subPage === 'leave') {
+                    renderTrackingLeave(subPageContent);
+                } else {
+                    renderTrackingAttendance(subPageContent);
+                }
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('hr', btn.dataset.subtab)));
+            }
+
+            // 群組分頁：人員地圖、出勤紀錄（僅顯示指定成員）
+            function renderGroup(subPage) {
+                mainContent.innerHTML = `
+                    <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
+                        <button data-subtab="map" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'map' || !subPage ? 'active' : ''}">人員地圖</button>
+                        <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤紀錄</button>
+                    </div>
+                    <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
+
+                const subPageContent = document.getElementById('sub-page-content');
+                if (subPage === 'attendance') {
+                    renderGroupAttendance(subPageContent);
+                } else {
+                    renderGroupMap(subPageContent);
+                }
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('group', btn.dataset.subtab)));
+            }
+
+            function renderGroupMap(container) {
+                container.innerHTML = `
+                    <div class="h-full w-full relative">
+                        <div id="group-map" class="h-full w-full"></div>
+                        <div id="group-map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
+                        <div class="absolute bottom-0 left-0 right-0 p-2">
+                            <div id="group-user-list" class="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg max-h-[150px] overflow-y-auto p-2 space-y-2"></div>
+                        </div>
+                    </div>
+                `;
+                if (state.googleMapsLoaded) {
+                    initGroupMap();
+                } else {
+                    const interval = setInterval(() => {
+                        if (state.googleMapsLoaded) { clearInterval(interval); initGroupMap(); }
+                    }, 100);
+                }
+            }
+
+            async function initGroupMap() {
+                const mapDiv = document.getElementById('group-map');
+                const mapLoader = document.getElementById('group-map-loader');
+                if (!mapDiv || !mapLoader) return;
+                const defaultCenter = { lat: 25.0330, lng: 121.5654 };
+                state.groupMap = new google.maps.Map(mapDiv, { center: defaultCenter, zoom: 12, disableDefaultUI: true, zoomControl: true, mapId: 'DEMO_MAP_ID' });
+                mapLoader.classList.add('hide');
+                listenForGroupUserLocations();
+            }
+
+            async function listenForGroupUserLocations() {
+                const allowedUserIds = await loadJuniorManagerAllowedUsers(state.currentUserData.id);
+                const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                const usersRef = collection(db, "users");
+                const q = query(usersRef, orderBy("name"));
+                const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    const listEl = document.getElementById('group-user-list');
+                    if (!listEl) return;
+                    listEl.innerHTML = '';
+                    if (!Array.isArray(allowedUserIds) || allowedUserIds.length === 0) {
+                        listEl.innerHTML = `<p class="text-center text-gray-500 p-2">尚未由管理員設定可查看人員</p>`;
+                        return;
+                    }
+                    // 清除舊標記
+                    (state.groupMarkers || []).forEach(m => m.map = null);
+                    state.groupMarkers = [];
+
+                    const users = [];
+                    querySnapshot.forEach(doc => { const data = { id: doc.id, ...doc.data() }; if (allowedUserIds.includes(data.id)) users.push(data); });
+                    users.forEach(user => {
+                        const hasLocation = user.lastLocation && user.lastLocation.latitude;
+                        const userElement = document.createElement('div');
+                        userElement.className = `flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${!hasLocation ? 'opacity-50' : ''}`;
+                        userElement.innerHTML = `
+                            <div class="flex items-center">
+                                <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
+                                <div>
+                                    <p class="font-medium text-sm text-gray-800">${user.name}</p>
+                                    <p class="text-xs text-gray-500">${getStatusDisplayText(user.status, user.lastLocation?.address) || '未打卡'}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs text-gray-400">${user.lastClockInTime ? '最近狀態時間：' + timeAgo(user.lastClockInTime.toDate()) : '無紀錄'}</span>
+                        `;
+                        listEl.appendChild(userElement);
+                        if (hasLocation) {
+                            const position = { lat: user.lastLocation.latitude, lng: user.lastLocation.longitude };
+                            const markerIcon = document.createElement('img');
+                            markerIcon.src = user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${user.name.charAt(0)}`;
+                            markerIcon.className = "w-9 h-9 rounded-full border-2 border-white shadow-md object-cover";
+                            const marker = new AdvancedMarkerElement({ position, map: state.groupMap, title: user.name, content: markerIcon });
+                            const infoWindow = new google.maps.InfoWindow({ content: `
+                                <div class="p-1">
+                                    <p class="font-bold">${user.name}</p>
+                                    <p>狀態: ${getStatusDisplayText(user.status, user.lastLocation?.address)}</p>
+                                    <p>最近狀態時間: ${user.lastClockInTime ? formatDateTime(user.lastClockInTime) : 'N/A'}</p>
+                                </div>` });
+                            marker.addListener('click', () => infoWindow.open({ anchor: marker, map: state.groupMap }));
+                            userElement.addEventListener('click', () => { state.groupMap.panTo(position); state.groupMap.setZoom(17); infoWindow.open({ anchor: marker, map: state.groupMap }); });
+                            state.groupMarkers.push(marker);
+                        }
+                    });
+                });
+                state.activeListeners.push(unsubscribe);
+            }
+
+            function renderGroupAttendance(container) {
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="group-user-select" class="text-sm font-medium">選擇人員:</label>
+                                <select id="group-user-select" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all">由管理員指定名單</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="group-record-date" class="text-sm font-medium">選擇日期:</label>
+                                <input type="date" id="group-record-date" value="${new Date().toISOString().split('T')[0]}" class="border border-gray-300 rounded-md px-2 py-1">
+                            </div>
+                        </div>
+                        <div id="group-attendance-records-list" class="space-y-3">
+                            <div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>
+                        </div>
+                    </div>`;
+
+                const userSelect = document.getElementById('group-user-select');
+                const dateInput = document.getElementById('group-record-date');
+
+                loadJuniorManagerAllowedUsers(state.currentUserData.id).then(ids => {
+                    if (!ids || ids.length === 0) return;
+                    const usersRef = collection(db, "users");
+                    getDocs(usersRef).then((qs) => {
+                        const users = [];
+                        qs.forEach(doc => { const d = { id: doc.id, ...doc.data() }; if (ids.includes(d.id)) users.push(d); });
+                        users.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(u => {
+                            const opt = document.createElement('option'); opt.value = u.id; opt.textContent = u.name; userSelect.appendChild(opt);
+                        });
+                        const loadRecords = () => renderAttendanceRecordsList('group-attendance-records-list', userSelect.value, dateInput.value, ids);
+                        userSelect.addEventListener('change', loadRecords);
+                        dateInput.addEventListener('change', loadRecords);
+                        loadRecords();
+                    });
+                });
+            }
+
+            // 共用：出勤紀錄列表渲染（支援指定用戶白名單）
+            async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
+                const container = document.getElementById(containerId);
+                const selectedDate = new Date(selectedDateStr);
+                const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
+                const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                const recordsRef = collection(db, 'clockInRecords');
+                let q;
+                if (selectedUserId === 'all') {
+                    q = query(recordsRef, where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                } else {
+                    q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                }
+
+                container.innerHTML = `<div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>`;
+                const querySnapshot = await getDocs(q);
+                if (querySnapshot.empty) {
+                    container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                    return;
+                }
+                const records = [];
+                querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
+                const usersRef = collection(db, 'users');
+                const usersSnapshot = await getDocs(usersRef);
+                const usersMap = {};
+                usersSnapshot.forEach(doc => { usersMap[doc.id] = doc.data().name; });
+
+                container.innerHTML = '';
+                records
+                    .filter(r => !allowedUserIds || allowedUserIds.includes(r.userId))
+                    .sort((a,b) => {
+                        const timeA = a.timestamp?.toDate?.() || new Date(0);
+                        const timeB = b.timestamp?.toDate?.() || new Date(0);
+                        return timeB - timeA;
+                    })
+                    .forEach(record => {
+                        const time = record.timestamp?.toDate?.() || new Date();
+                        const userName = usersMap[record.userId] || '未知用戶';
+                        const card = document.createElement('div');
+                        card.className = 'bg-white p-4 rounded-lg shadow border border-gray-200';
+                        card.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="font-semibold">${userName}</div>
+                                    <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
+                                    <div class="mt-1 flex items-center">
+                                        <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
+                                        ${record.location ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
+                                    </div>
+                                    ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
+                                </div>
+                                <div class="flex space-x-2">
+                                    ${record.location ? `
+                                        <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                            data-lat="${record.location.latitude}" 
+                                            data-lng="${record.location.longitude}">
+                                            <i data-lucide="map-pin"></i> 地圖
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="mt-2 flex space-x-2 overflow-x-auto">
+                                ${record.photoUrls && record.photoUrls.length > 0 ? `
+                                    <button class="photo-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" 
+                                        data-photos='${JSON.stringify(record.photoUrls || [])}' 
+                                        data-descriptions='${JSON.stringify(record.descriptions || [])}'>
+                                        <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
+                                    </button>
+                                ` : ''}
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                lucide.createIcons();
+                container.querySelectorAll('.map-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const lat = parseFloat(e.currentTarget.dataset.lat);
+                        const lng = parseFloat(e.currentTarget.dataset.lng);
+                        if(lat && lng) openMapModal(lat, lng);
+                        else showToast('無位置資訊可顯示', true);
+                    });
+                });
+                container.querySelectorAll('.photo-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const photos = JSON.parse(e.currentTarget.dataset.photos);
+                        const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
+                        openPhotoGalleryModal(photos, descriptions);
+                    });
+                });
+            }
+
+            // 讀取初階主管可見用戶設定
+            async function loadJuniorManagerAllowedUsers(managerUserId) {
+                try {
+                    const docRef = doc(db, 'settings', 'group');
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        return data?.managerGroups?.[managerUserId] || [];
+                    }
+                } catch (e) { console.error('loadJuniorManagerAllowedUsers error', e); }
+                return [];
+            }
             
             function renderTrackingMap(container) {
                 container.innerHTML = `
@@ -2178,6 +2457,7 @@
                         <button data-subtab="general" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'general' ? 'active' : ''}">一般設定</button>
                         <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位位置</button>
                         <button data-subtab="holidays" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'holidays' ? 'active' : ''}">休假日</button>
+                        <button data-subtab="group" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'group' ? 'active' : ''}">群組設定</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -2192,9 +2472,78 @@
                     renderSettingsLocation(subPageContent);
                 } else if (subPage === 'holidays') {
                     renderSettingsHolidays(subPageContent);
+                } else if (subPage === 'group') {
+                    renderSettingsGroup(subPageContent);
                 }
                 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('settings', btn.dataset.subtab)));
+            }
+
+            function renderSettingsGroup(container) {
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <h2 class="text-lg font-semibold">群組設定</h2>
+                        <p class="text-sm text-gray-600">將初階主管或主管關聯至可查看的員工名單。</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div id="manager-select-panel" class="bg-white p-4 rounded-md shadow-sm border">
+                                <h3 class="font-medium mb-2">選擇管理者</h3>
+                                <select id="manager-user-select" class="w-full border border-gray-300 rounded-md px-2 py-1"></select>
+                            </div>
+                            <div id="allowed-users-panel" class="bg-white p-4 rounded-md shadow-sm border">
+                                <h3 class="font-medium mb-2">可查看員工</h3>
+                                <div id="allowed-users-list" class="space-y-2"></div>
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button id="save-group-settings" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700">儲存設定</button>
+                        </div>
+                    </div>`;
+                lucide.createIcons();
+                initSettingsGroupUI();
+            }
+
+            async function initSettingsGroupUI() {
+                const managerSelect = document.getElementById('manager-user-select');
+                const allowedList = document.getElementById('allowed-users-list');
+                const usersRef = collection(db, 'users');
+                const qs = await getDocs(usersRef);
+                const users = [];
+                qs.forEach(docSnap => users.push({ id: docSnap.id, ...docSnap.data() }));
+                const managers = users.filter(u => u.role === 'manager');
+                managers.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')).forEach(m => {
+                    const opt = document.createElement('option'); opt.value = m.id; opt.textContent = `${m.name}`; managerSelect.appendChild(opt);
+                });
+
+                const renderAllowedUsers = async () => {
+                    allowedList.innerHTML = '';
+                    const selectedManagerId = managerSelect.value;
+                    const allowedIds = await loadJuniorManagerAllowedUsers(selectedManagerId);
+                    users.filter(u => u.role === 'user').sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')).forEach(u => {
+                        const row = document.createElement('label');
+                        row.className = 'flex items-center justify-between bg-white p-2 rounded border';
+                        const chk = document.createElement('input');
+                        chk.type = 'checkbox';
+                        chk.checked = allowedIds.includes(u.id);
+                        chk.dataset.userid = u.id;
+                        row.appendChild(document.createTextNode(u.name));
+                        row.appendChild(chk);
+                        allowedList.appendChild(row);
+                    });
+                };
+                managerSelect.addEventListener('change', renderAllowedUsers);
+                await renderAllowedUsers();
+
+                document.getElementById('save-group-settings').addEventListener('click', async () => {
+                    const selectedManagerId = managerSelect.value;
+                    const checkboxes = allowedList.querySelectorAll('input[type="checkbox"]');
+                    const allowedIds = Array.from(checkboxes).filter(c => c.checked).map(c => c.dataset.userid);
+                    const docRef = doc(db, 'settings', 'group');
+                    const existingSnap = await getDoc(docRef);
+                    const baseData = existingSnap.exists() ? existingSnap.data() : {};
+                    const newData = { ...baseData, managerGroups: { ...(baseData.managerGroups || {}), [selectedManagerId]: allowedIds } };
+                    await setDoc(docRef, newData, { merge: true });
+                    showToast('群組設定已儲存');
+                });
             }
             
             function renderSettingsAccounts(container) {
@@ -2243,8 +2592,8 @@
   'bg-blue-100 text-blue-700'
 }">${
   user.role === 'admin' ? '管理員' : 
-  user.role === 'manager' ? '主管' : 
-  '員工'
+  user.role === 'manager' ? '高階主管' : 
+  '內勤'
 }</span>
                                     </div>
                                 </div>
@@ -3215,8 +3564,8 @@
                                 <div>
                                     <label for="user-role" class="block text-sm font-medium text-gray-700">角色 (必填)</label>
                                     <select id="user-role" class="w-full mt-1 px-3 py-2 border rounded-md">
-                                        <option value="user" ${isEditing && user.role === 'user' ? 'selected' : ''}>員工 (User)</option>
-                                        <option value="manager" ${isEditing && user.role === 'manager' ? 'selected' : ''}>主管 (Manager)</option>
+                                        <option value="user" ${isEditing && user.role === 'user' ? 'selected' : ''}>內勤 (User)</option>
+                                        <option value="manager" ${isEditing && user.role === 'manager' ? 'selected' : ''}>高階主管 (Manager)</option>
                                         <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>管理員 (Admin)</option>
                                     </select>
                                 </div>
