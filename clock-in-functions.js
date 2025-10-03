@@ -1218,6 +1218,10 @@ async function checkAllUsersOvertimeStatus() {
     }
 }
 
+// 將函數添加到全域作用域
+window.checkAndHandleOvertimeClockOut = checkAndHandleOvertimeClockOut;
+window.checkAllUsersOvertimeStatus = checkAllUsersOvertimeStatus;
+
 // 添加事件監聽器
 document.addEventListener('DOMContentLoaded', function() {
     // 外出按鈕
