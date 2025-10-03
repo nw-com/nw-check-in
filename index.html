@@ -178,7 +178,7 @@
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
             <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
-            <p class="text-gray-500">測試版  V2.2.7</p>
+            <p class="text-gray-500">雲端測試版V2.2.0</p>
         </div>
         <form id="login-form">
             <div class="mb-4">
@@ -620,7 +620,8 @@
                         // 其他情況按姓名排序
                         return a.name.localeCompare(b.name, 'zh-Hant');
                     }).forEach(user => {
-                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', user.lastLocation);
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText);
                         const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
                             myStatusFound = true;
@@ -802,8 +803,12 @@
                                      state.outboundLocation = locationText;
                                      document.body.removeChild(backdrop);
                                      document.body.removeChild(modal);
-                                     // 打開相機
-                                     openCameraModal(type, locationText);
+                                     // 打開相機，傳遞當前位置和外出地點名稱
+                                     if (state.currentLocation) {
+                                         openCameraModal(type, { ...state.currentLocation, name: locationText });
+                                     } else {
+                                         alert('無法獲取當前位置，請確保已開啟定位服務');
+                                     }
                                  } else {
                                      alert('請輸入外出地點');
                                  }
@@ -3483,21 +3488,35 @@
                         const photoUrls = uploadedPhotos.map(p => p.url);
                         const descriptions = uploadedPhotos.map(p => p.description);
 
-                        await addDoc(collection(db, "clockInRecords"), {
+                        const recordData = {
                             userId: state.currentUser.uid,
                             type: type,
                             timestamp: serverTimestamp(),
                             location: new GeoPoint(location.lat, location.lng),
                             photoUrls,
                             descriptions,
-                        });
+                        };
+                        
+                        // 如果是外出打卡，添加地點名稱
+                        if (type === '外出' && location.name) {
+                            recordData.locationName = location.name;
+                        }
+                        
+                        await addDoc(collection(db, "clockInRecords"), recordData);
 
-                        await updateDoc(doc(db, "users", state.currentUser.uid), {
+                        const userUpdateData = {
                             status: type,
                             clockInStatus: type,  // 添加 clockInStatus 欄位
                             lastClockInTime: serverTimestamp(),
                             lastLocation: new GeoPoint(location.lat, location.lng)
-                        });
+                        };
+                        
+                        // 如果是外出打卡，添加外出地點名稱
+                        if (type === '外出' && location.name) {
+                            userUpdateData.outboundLocation = location.name;
+                        }
+                        
+                        await updateDoc(doc(db, "users", state.currentUser.uid), userUpdateData);
 
                         // 更新本地狀態
                         state.clockInStatus = type;
@@ -3718,5 +3737,4 @@
         });
     </script>
 </body>
-
 </html>
