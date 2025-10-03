@@ -2099,6 +2099,30 @@
                         </div>
                         
                         <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
+                            <h3 class="font-bold text-lg mb-4">自動下班打卡設定</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <label for="enable-auto-clock-out" class="text-gray-700">啟用自動下班打卡</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enable-auto-clock-out">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <label for="work-hours" class="text-gray-700">工作時數（小時）</label>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="number" id="work-hours" min="1" max="24" value="8" class="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500">
+                                        <span class="text-gray-500 text-sm">小時</span>
+                                    </div>
+                                </div>
+                                <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+                                    <i data-lucide="info" class="w-4 h-4 inline mr-1"></i>
+                                    啟用後，系統將在上班打卡後的指定時數自動執行下班打卡，狀態顯示為「已下班-未打卡」
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
                             <h3 class="font-bold text-lg mb-4">顯示所有帳號</h3>
                             <p class="text-sm text-gray-600 mb-4">勾選要在儀表板「所有同仁狀態」中顯示的帳號</p>
                             <div id="user-display-settings" class="space-y-2">
@@ -2127,10 +2151,16 @@
                         const settings = docSnap.data();
                         document.getElementById('show-employee-status').checked = settings.showEmployeeStatus !== false;
                         
+                        // 載入自動下班打卡設定
+                        document.getElementById('enable-auto-clock-out').checked = settings.enableAutoClockOut || false;
+                        document.getElementById('work-hours').value = settings.workHours || 8;
+                        
                         // 載入使用者顯示設定
                         loadUserDisplaySettings(settings.visibleUsers || {});
                     } else {
                         // 如果設定不存在，載入預設值（全部顯示）
+                        document.getElementById('enable-auto-clock-out').checked = false;
+                        document.getElementById('work-hours').value = 8;
                         loadUserDisplaySettings({});
                     }
                 }).catch(error => {
@@ -2227,6 +2257,8 @@
                     try {
                         showLoading(true);
                         const showEmployeeStatus = document.getElementById('show-employee-status').checked;
+                        const enableAutoClockOut = document.getElementById('enable-auto-clock-out').checked;
+                        const workHours = parseInt(document.getElementById('work-hours').value) || 8;
                         
                         // 收集使用者顯示設定
                         const visibleUsers = {};
@@ -2241,6 +2273,8 @@
                         // 儲存到 Firebase
                         await setDoc(doc(db, "settings", "general"), {
                             showEmployeeStatus,
+                            enableAutoClockOut,
+                            workHours,
                             visibleUsers,
                             updatedAt: serverTimestamp()
                         }, { merge: true });
@@ -3525,6 +3559,19 @@
 
                         // 更新本地狀態
                         state.clockInStatus = type;
+                        
+                        // 如果是上班打卡，啟動自動下班打卡計時器
+                        if (type === '上班' && typeof startAutoClockOutTimer === 'function') {
+                            // 重新載入設定並啟動計時器
+                            loadAutoClockOutSettings().then(() => {
+                                startAutoClockOutTimer();
+                            });
+                        }
+                        
+                        // 如果是下班打卡，停止自動下班打卡計時器
+                        if (type === '下班' && typeof stopAutoClockOutTimer === 'function') {
+                            stopAutoClockOutTimer();
+                        }
                         
                         // 更新頁面顯示
                         updateStatusDisplay();
