@@ -788,11 +788,15 @@
                             <h3 class="font-bold text-red-800 mb-2 flex items-center"><i data-lucide="user-circle" class="w-4 h-4 mr-2"></i>我的狀態</h3>
                             <div id="my-status" class="text-gray-600">讀取中...</div>
                         </div>
-                        <div id="all-users-status-container">
+                        <div id="all-users-summary-card" class="bg-white p-4 rounded-lg mb-4 shadow-sm border cursor-pointer">
                             <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有同仁狀態</h3>
-                            <div id="all-users-status" class="space-y-2">
-                               <div class="text-center p-4 text-gray-500">讀取中...</div>
+                            <div class="grid grid-cols-2 gap-2 text-gray-700">
+                                <div>上班 : <span id="count-work">0</span> 人</div>
+                                <div>外出 : <span id="count-outbound">0</span> 人</div>
+                                <div>下班 : <span id="count-off">0</span> 人</div>
+                                <div>請假 : <span id="count-leave">0</span> 人</div>
                             </div>
+                            <div class="text-xs text-gray-500 mt-2">點擊查看所有同仁狀態</div>
                         </div>
                     </div>
                 `;
@@ -821,7 +825,7 @@
                 
                 // 應用本地設置
                 if (localSettings.showEmployeeStatus === false) {
-                    const container = document.getElementById('all-users-status-container');
+                    const container = document.getElementById('all-users-summary-card');
                     if (container) container.style.display = 'none';
                 }
                 
@@ -836,24 +840,33 @@
                             
                             // 如果設置與本地不同，立即應用
                             if (settings.showEmployeeStatus !== localSettings.showEmployeeStatus) {
-                                const container = document.getElementById('all-users-status-container');
+                                const container = document.getElementById('all-users-summary-card');
                                 if (container) {
                                     container.style.display = settings.showEmployeeStatus ? 'block' : 'none';
                                 }
                             }
-                        }
-                    }).catch(error => {
-                        console.warn("Could not fetch latest settings, using local settings instead:", error);
-                    });
-                } catch (error) {
-                    console.warn("Error in settings fetch attempt:", error);
-                }
+                    }
+                }).catch(error => {
+                    console.warn("Could not fetch latest settings, using local settings instead:", error);
+                });
+            } catch (error) {
+                console.warn("Error in settings fetch attempt:", error);
+            }
+
+            // 點擊摘要卡開啟所有同仁狀態彈窗
+            const summaryCard = document.getElementById('all-users-summary-card');
+            if (summaryCard) {
+                summaryCard.addEventListener('click', () => {
+                    openAllUsersStatusModal();
+                });
+            }
                 
                 const usersRef = collection(db, "users");
                 const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
-                    const allUsersStatusEl = document.getElementById('all-users-status');
-                    if(!allUsersStatusEl) return;
-                    allUsersStatusEl.innerHTML = '';
+                    const countWorkEl = document.getElementById('count-work');
+                    const countOutboundEl = document.getElementById('count-outbound');
+                    const countOffEl = document.getElementById('count-off');
+                    const countLeaveEl = document.getElementById('count-leave');
                     let myStatusFound = false;
                     const users = [];
                     querySnapshot.forEach(doc => users.push({id: doc.id, ...doc.data()}));
@@ -911,55 +924,140 @@
                                 ${clockInTime ? '打卡 ' + clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) : ''}
                               </div>`;
                         }
-                        // 排除當前登入用戶
-                        if (user.id !== state.currentUser.uid) {
-                            const clockInTime = user.lastClockInTime ? new Date(user.lastClockInTime.toDate()) : null;
-                            const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
-                            
-                            allUsersStatusEl.innerHTML += `
-                                <div class="flex items-center justify-between bg-white p-3 rounded-md shadow-sm border mb-2">
-                                    <div class="flex items-center">
-                                        <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name.charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
-                                        <div>
-                                            <span class="font-medium text-gray-700 user-name-btn cursor-pointer" 
-                                                  data-user-id="${user.id}" 
-                                                  data-user-name="${user.name}" 
-                                                  data-user-phone="${user.phone || ''}">${user.name}</span>
-                                            <div class="flex items-center mt-1">
-                                                <span class="text-sm font-semibold ${statusColor} mr-2">${statusText}</span>
-                                                <span class="text-xs text-gray-500">${timeFormatted}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="flex space-x-2">
-                                        ${user.lastPhotoUrl ? `<button class="view-photo-btn p-2 bg-blue-100 rounded-md" data-photo="${user.lastPhotoUrl}" data-desc="${user.lastLocation || ''}"><i data-lucide="image" class="w-6 h-6 text-blue-600"></i></button>` : ''}
-                                        ${user.lastLocation ? `<button class="view-map-btn p-2 bg-green-100 rounded-md" data-lat="${user.lastLocation?.latitude || 0}" data-lng="${user.lastLocation?.longitude || 0}"><i data-lucide="map-pin" class="w-6 h-6 text-green-600"></i></button>` : ''}
-                                    </div>
-                                </div>`;
-                        }
                     });
+
+                    // 計算摘要人數
+                    let countWork = 0, countOutbound = 0, countOff = 0, countLeave = 0;
+                    visibleUsersList.forEach(user => {
+                        const s = user.clockInStatus || '';
+                        const leave = user.leaveStatus || '';
+                        if (s === '上班' || s === '返回') countWork++;
+                        else if (s === '外出' || s === '抵達' || s === '離開') countOutbound++;
+                        else if (s === '下班' || s === '已下班-未打卡') countOff++;
+                        const isLeave = s === '臨時請假' || leave === 'approved' || leave === 'pending';
+                        if (isLeave) countLeave++;
+                    });
+                    if (countWorkEl) countWorkEl.textContent = countWork;
+                    if (countOutboundEl) countOutboundEl.textContent = countOutbound;
+                    if (countOffEl) countOffEl.textContent = countOff;
+                    if (countLeaveEl) countLeaveEl.textContent = countLeave;
                     if(!myStatusFound && document.getElementById('my-status')){ document.getElementById('my-status').textContent = '無法取得您的狀態'; }
                     
-                    // 添加照片和地圖按鈕的事件監聽器
-                    document.querySelectorAll('.view-photo-btn').forEach(btn => {
+                });
+                state.activeListeners.push(unsubscribe);
+            }
+
+            // 所有同仁狀態彈窗
+            function openAllUsersStatusModal() {
+                // 背景
+                const backdrop = document.createElement('div');
+                backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+                backdrop.id = 'all-users-modal-backdrop';
+                // 容器
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 z-50 flex items-center justify-center';
+                modal.id = 'all-users-modal';
+                const box = document.createElement('div');
+                box.className = 'bg-white rounded-lg shadow-lg w-11/12 max-w-2xl p-4 border';
+                box.innerHTML = `
+                    <div class=\"flex items-center justify-between mb-2\">
+                        <h3 class=\"font-bold text-lg flex items-center\"><i data-lucide=\"users\" class=\"w-5 h-5 mr-2\"></i>所有同仁狀態</h3>
+                        <button id=\"close-all-users-modal\" class=\"text-gray-600 hover:text-gray-800\"><i data-lucide=\"x\" class=\"w-5 h-5\"></i></button>
+                    </div>
+                    <div id=\"all-users-modal-list\" class=\"space-y-2 max-h-[60vh] overflow-y-auto\">
+                        <div class=\"text-center p-4 text-gray-500\">讀取中...</div>
+                    </div>
+                `;
+                modal.appendChild(box);
+                document.body.appendChild(backdrop);
+                document.body.appendChild(modal);
+                lucide.createIcons();
+                
+                const usersRef = collection(db, 'users');
+                const unsub = onSnapshot(query(usersRef), (querySnapshot) => {
+                    const listEl = document.getElementById('all-users-modal-list');
+                    if (!listEl) return;
+                    listEl.innerHTML = '';
+                    const users = [];
+                    querySnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+                    
+                    // 顯示設定過濾
+                    let visibleUsers = {};
+                    try {
+                        const savedSettings = localStorage.getItem('app_general_settings');
+                        if (savedSettings) {
+                            const settings = JSON.parse(savedSettings);
+                            visibleUsers = settings.visibleUsers || {};
+                        }
+                    } catch (e) {
+                        console.warn('Could not load user visibility settings:', e);
+                    }
+                    const visibleUsersList = users.filter(user => visibleUsers[user.id] !== false);
+                    
+                    // 排序：上班中優先，然後時間，最後姓名
+                    visibleUsersList.sort((a, b) => {
+                        const statusA = getStatusDisplayText(a.clockInStatus || '未打卡', a.lastLocation);
+                        const statusB = getStatusDisplayText(b.clockInStatus || '未打卡', b.lastLocation);
+                        if (statusA.includes('上班中') && !statusB.includes('上班中')) return -1;
+                        if (!statusA.includes('上班中') && statusB.includes('上班中')) return 1;
+                        if (statusA.includes('上班中') && statusB.includes('上班中')) {
+                            const timeA = a.lastClockInTime ? a.lastClockInTime.toDate() : new Date(0);
+                            const timeB = b.lastClockInTime ? b.lastClockInTime.toDate() : new Date(0);
+                            return timeA - timeB;
+                        }
+                        return a.name.localeCompare(b.name, 'zh-Hant');
+                    }).forEach(user => {
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText);
+                        const statusColor = getStatusColor(statusText);
+                        const clockInTime = user.lastClockInTime ? new Date(user.lastClockInTime.toDate()) : null;
+                        const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
+                        listEl.innerHTML += `
+                            <div class=\"flex items-center justify-between bg-white p-3 rounded-md shadow-sm border\">
+                                <div class=\"flex items-center\">
+                                    <img src=\"${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name?.charAt(0) || 'U'}`}\" class=\"w-8 h-8 rounded-full mr-3 object-cover\">
+                                    <div>
+                                        <span class=\"font-medium text-gray-700\">${user.name || user.displayName || '未命名'}</span>
+                                        <div class=\"flex items-center mt-1\">
+                                            <span class=\"text-sm font-semibold ${statusColor} mr-2\">${statusText}</span>
+                                            <span class=\"text-xs text-gray-500\">${timeFormatted}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class=\"flex space-x-2\">
+                                    ${user.lastPhotoUrl ? `<button class=\"view-photo-btn p-2 bg-blue-100 rounded-md\" data-photo=\"${user.lastPhotoUrl}\" data-desc=\"${user.lastLocation || ''}\"><i data-lucide=\"image\" class=\"w-6 h-6 text-blue-600\"></i></button>` : ''}
+                                    ${user.lastLocation ? `<button class=\"view-map-btn p-2 bg-green-100 rounded-md\" data-lat=\"${user.lastLocation?.latitude || 0}\" data-lng=\"${user.lastLocation?.longitude || 0}\"><i data-lucide=\"map-pin\" class=\"w-6 h-6 text-green-600\"></i></button>` : ''}
+                                </div>
+                            </div>`;
+                    });
+                    // 綁定照片與地圖按鈕
+                    document.querySelectorAll('#all-users-modal .view-photo-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const photoUrl = e.currentTarget.dataset.photo;
                             const description = e.currentTarget.dataset.desc;
                             if(photoUrl) openPhotoModal([photoUrl], [description]);
-                            else showToast("無照片可顯示", true);
+                            else showToast('無照片可顯示', true);
                         });
                     });
-                    
-                    document.querySelectorAll('.view-map-btn').forEach(btn => {
+                    document.querySelectorAll('#all-users-modal .view-map-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const lat = parseFloat(e.currentTarget.dataset.lat);
                             const lng = parseFloat(e.currentTarget.dataset.lng);
                             if(lat && lng) openMapModal(lat, lng);
-                            else showToast("無位置資訊可顯示", true);
+                            else showToast('無位置資訊可顯示', true);
                         });
                     });
                 });
-                state.activeListeners.push(unsubscribe);
+                
+                function closeModal() {
+                    try { unsub(); } catch {}
+                    const m = document.getElementById('all-users-modal');
+                    const b = document.getElementById('all-users-modal-backdrop');
+                    if (m) document.body.removeChild(m);
+                    if (b) document.body.removeChild(b);
+                }
+                document.getElementById('close-all-users-modal').addEventListener('click', closeModal);
+                backdrop.addEventListener('click', closeModal);
             }
 
             function renderClockIn(subPage) {
