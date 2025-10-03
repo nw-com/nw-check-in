@@ -565,6 +565,167 @@
                     welcomeMessage.textContent = `歡迎~ ${state.currentUserData.name}`;
                 }
             }
+            
+            function renderTrackingDevices(container) {
+                container.innerHTML = `
+                    <div class="p-4">
+                        <h2 class="text-lg font-bold mb-4">打卡裝置監控</h2>
+                        <div class="mb-4 flex items-center gap-4">
+                            <div>
+                                <label for="device-date-filter" class="block text-sm font-medium text-gray-700">查詢日期</label>
+                                <input type="date" id="device-date-filter" class="mt-1 px-3 py-2 border rounded-md">
+                            </div>
+                            <div class="flex items-end">
+                                <button id="device-search-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">查詢</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white border border-gray-300">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">打卡日期</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">打卡時的裝置ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="device-records-list" class="bg-white divide-y divide-gray-200">
+                                    <tr>
+                                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">請選擇日期並點擊查詢</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                
+                // 設定預設日期為今天
+                const dateFilter = document.getElementById('device-date-filter');
+                const today = new Date();
+                dateFilter.value = today.toISOString().split('T')[0];
+                
+                const searchBtn = document.getElementById('device-search-btn');
+                searchBtn.addEventListener('click', loadDeviceRecords);
+                
+                // 載入打卡裝置記錄
+                async function loadDeviceRecords() {
+                    const selectedDate = new Date(dateFilter.value);
+                    if (isNaN(selectedDate.getTime())) {
+                        showToast('請選擇有效日期', true);
+                        return;
+                    }
+                    
+                    const deviceRecordsList = document.getElementById('device-records-list');
+                    deviceRecordsList.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="px-6 py-4 text-center">
+                                <div class="flex items-center justify-center">
+                                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                    <span class="ml-2">載入中...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    
+                    try {
+                        // 取得日期範圍 (當日 00:00 到 23:59)
+                        const startDate = new Date(selectedDate);
+                        startDate.setHours(0, 0, 0, 0);
+                        const endDate = new Date(selectedDate);
+                        endDate.setHours(23, 59, 59, 999);
+                        
+                        // 查詢打卡記錄（前端依日期過濾，避免複合索引需求）
+                        const clockInRef = collection(db, 'clockInRecords');
+                        const q = query(clockInRef);
+                        const qs = await getDocs(q);
+                        
+                        const records = [];
+                        qs.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
+                        
+                        const filtered = records.filter(r => {
+                            const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
+                            if (!ts) return false;
+                            return ts >= startDate && ts <= endDate;
+                        }).sort((a, b) => {
+                            const ta = a.timestamp?.toDate?.() || (a.timestamp ? new Date(a.timestamp) : new Date(0));
+                            const tb = b.timestamp?.toDate?.() || (b.timestamp ? new Date(b.timestamp) : new Date(0));
+                            return tb - ta;
+                        });
+                        
+                        // 取得所有用戶資料以顯示姓名
+                        const usersRef = collection(db, 'users');
+                        const usersSnapshot = await getDocs(usersRef);
+                        const usersData = {};
+                        usersSnapshot.forEach(doc => { usersData[doc.id] = doc.data(); });
+                        
+                        // 以使用者為單位分組
+                        const grouped = {};
+                        filtered.forEach(r => {
+                            const uid = r.userId;
+                            if (!grouped[uid]) grouped[uid] = [];
+                            grouped[uid].push(r);
+                        });
+                        
+                        let html = '';
+                        Object.keys(grouped).forEach(uid => {
+                            const user = usersData[uid];
+                            if (!user) return;
+                            const recs = grouped[uid];
+                            const deviceIds = [...new Set(recs.map(r => r.deviceId).filter(Boolean))];
+                            const hasAnomalies = deviceIds.length > 1;
+                            
+                            recs.forEach(r => {
+                                const rowClass = hasAnomalies ? 'bg-red-50' : '';
+                                const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : new Date());
+                                html += `
+                                    <tr class="${rowClass}">
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="flex items-center">
+                                                <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${(user.name||'U').charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
+                                                <div class="text-sm font-medium text-gray-900">${user.name || '未知'}</div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(r.type)}">${r.type || '未知'}</span>
+                                            ${hasAnomalies ? '<div class="text-xs text-red-600 mt-1">異常</div>' : ''}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${ts.toLocaleString('zh-TW')}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${r.deviceId || '未知'}</td>
+                                    </tr>
+                                `;
+                            });
+                        });
+                        
+                        document.getElementById('device-records-list').innerHTML = html || `
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center text-gray-500">沒有符合條件的紀錄</td>
+                            </tr>
+                        `;
+                        
+                    } catch (error) {
+                        console.error('載入裝置記錄失敗:', error);
+                        document.getElementById('device-records-list').innerHTML = `
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center text-red-500">載入失敗，請稍後再試</td>
+                            </tr>
+                        `;
+                    }
+                }
+                
+                function getStatusColor(status) {
+                    switch (status) {
+                        case '上班': return 'bg-green-100 text-green-800';
+                        case '下班': return 'bg-blue-100 text-blue-800';
+                        case '外出': return 'bg-yellow-100 text-yellow-800';
+                        case '返回': return 'bg-purple-100 text-purple-800';
+                        case '抵達': return 'bg-orange-100 text-orange-800';
+                        case '離開': return 'bg-gray-100 text-gray-800';
+                        case '臨時請假': return 'bg-red-100 text-red-800';
+                        case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
+                        default: return 'bg-gray-100 text-gray-800';
+                    }
+                }
+            }
 
             mainNav.addEventListener('click', (e) => {
                 const tabButton = e.target.closest('.tab-btn');
@@ -1714,7 +1875,7 @@
                         <button data-subtab="map" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'map' || !subPage ? 'active' : ''}">人員地圖</button>
                         <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤紀錄</button>
                         <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">假單審核</button>
-                        <button data-subtab="reports" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'reports' ? 'active' : ''}">表單印製</button>
+                        <button data-subtab="devices" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'devices' ? 'active' : ''}">打卡裝置</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
@@ -1723,8 +1884,8 @@
                     renderTrackingAttendance(subPageContent);
                 } else if (subPage === 'leave') {
                     renderTrackingLeave(subPageContent);
-                } else if (subPage === 'reports') {
-                    renderTrackingReports(subPageContent);
+                } else if (subPage === 'devices') {
+                    renderTrackingDevices(subPageContent);
                 } else {
                     renderTrackingMap(subPageContent);
                 }
@@ -3682,7 +3843,7 @@
                                     <input type="file" id="user-avatar-upload" class="hidden" accept="image/*">
                                     <div class="flex space-x-2">
                                         <button type="button" id="user-upload-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">上傳照片</button>
-                                        <button type="button" id="user-camera-avatar-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md">開啟相機</button>
+                                
                                     </div>
                                 </div>
                                 
@@ -3724,10 +3885,7 @@
                                         <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>管理員</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">第一次打卡裝置ID</label>
-                                    <input type="text" id="user-first-device-id" value="${isEditing ? (user.firstClockInDeviceId || '') : ''}" class="w-full mt-1 px-3 py-2 border rounded-md bg-gray-100" disabled>
-                                </div>
+                                
                                 <p id="user-form-error" class="text-red-500 text-sm text-center"></p>
                                 <div class="flex justify-end space-x-2 pt-2 flex-shrink-0">
                                      <button type="button" class="cancel-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">取消</button>
@@ -3761,17 +3919,7 @@
                     }
                 });
                 
-                const cameraBtn = document.getElementById('user-camera-avatar-btn');
-                if (cameraBtn) {
-                    cameraBtn.addEventListener('click', () => {
-                        openAvatarCameraModal((blob) => {
-                            if (blob) {
-                                newUserAvatarFile = blob;
-                                avatarPreview.src = URL.createObjectURL(blob);
-                            }
-                        });
-                    });
-                }
+                
 
 
                 // --- Form Logic ---
@@ -3974,13 +4122,8 @@
                                     <img id="modal-avatar" src="${state.currentUserData.avatarUrl || `https://placehold.co/80x80/EFEFEF/333333?text=${state.currentUserData.name.charAt(0)}`}" alt="Avatar" class="w-20 h-20 rounded-full object-cover">
                                     <label for="avatar-upload" class="cursor-pointer text-blue-600 hover:text-blue-800">
                                         更換頭像
-                                        <input type="file" id="avatar-upload" accept="image/*" capture="environment" class="hidden">
+                                        <input type="file" id="avatar-upload" accept="image/*" class="hidden">
                                     </label>
-                                    <div id="avatar-dropzone" class="w-full mt-2 p-3 border-2 border-dashed rounded-md text-sm text-gray-600 text-center">拖曳圖片到此，或在此按 Ctrl+V 貼上圖片</div>
-                                    <div class="w-full flex items-center gap-2 text-sm mt-1">
-                                        <input id="avatar-url" type="url" placeholder="貼上圖片網址 (http/https)" class="flex-1 border rounded px-2 py-1">
-                                        <button id="avatar-url-btn" class="px-3 py-1 bg-blue-600 text-white rounded">從網址匯入</button>
-                                    </div>
                                 </div>
 
                                 <!-- Info -->
@@ -4062,52 +4205,6 @@
                     await processAndUploadAvatar(file);
                 });
 
-                // 允許拖曳上傳
-                const dropzone = document.getElementById('avatar-dropzone');
-                dropzone.addEventListener('dragover', (ev) => { ev.preventDefault(); dropzone.classList.add('bg-gray-50'); });
-                dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('bg-gray-50'); });
-                dropzone.addEventListener('drop', async (ev) => {
-                    ev.preventDefault();
-                    dropzone.classList.remove('bg-gray-50');
-                    const file = ev.dataTransfer?.files?.[0] || null;
-                    if (file) await processAndUploadAvatar(file);
-                });
-
-                // 支援貼上圖片（Ctrl+V）
-                modal.addEventListener('paste', async (ev) => {
-                    const items = ev.clipboardData?.items || [];
-                    for (const item of items) {
-                        if (item.type && item.type.startsWith('image')) {
-                            const blob = item.getAsFile();
-                            if (blob) {
-                                const file = new File([blob], `avatar_paste_${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
-                                await processAndUploadAvatar(file);
-                                break;
-                            }
-                        }
-                    }
-                });
-
-                // 從網址匯入圖片
-                document.getElementById('avatar-url-btn').addEventListener('click', async () => {
-                    const url = document.getElementById('avatar-url').value.trim();
-                    if (!url || !(url.startsWith('http://') || url.startsWith('https://'))) {
-                        showToast('請輸入有效的圖片網址', true);
-                        return;
-                    }
-                    try {
-                        showLoading(true);
-                        const res = await fetch(url);
-                        const blob = await res.blob();
-                        const file = new File([blob], `avatar_url_${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
-                        await processAndUploadAvatar(file);
-                    } catch (err) {
-                        console.error('Avatar URL import error:', err);
-                        showToast('網址匯入失敗', true);
-                    } finally {
-                        showLoading(false);
-                    }
-                });
                 
                 // 壓縮圖片函數
                 async function compressImage(file, maxWidth) {
