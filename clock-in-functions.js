@@ -10,6 +10,11 @@ if (typeof state.clockInStatus === 'undefined') {
     state.clockInStatus = 'none';
 }
 
+// 一次性錯誤提示旗標（避免重複提示）
+if (typeof state.autoSettingsErrorPromptShown === 'undefined') {
+    state.autoSettingsErrorPromptShown = false;
+}
+
 // 根據狀態更新顯示文本和樣式
 function updateStatusTextAndStyle(statusText, statusDisplay) {
     switch(state.clockInStatus) {
@@ -969,22 +974,60 @@ function closeAllModals() {
 let autoClockOutTimer = null;
 let autoClockOutSettings = {
     enabled: false,
-    workHours: 8
+    workHours: 8,
+    loaded: false
 };
 
 // 載入自動下班打卡設定
 async function loadAutoClockOutSettings() {
     try {
+        const user = firebase.auth().currentUser;
+        // 未登入時不讀取遠端設定，使用預設值
+        if (!user) {
+            autoClockOutSettings.enabled = false;
+            autoClockOutSettings.workHours = 8;
+            autoClockOutSettings.loaded = false;
+            console.log('未登入，略過遠端自動下班設定載入，使用預設值');
+            return autoClockOutSettings;
+        }
+
         const settingsRef = firebase.firestore().collection('settings').doc('general');
         const doc = await settingsRef.get();
-        
+        autoClockOutSettings.loaded = true;
+
         if (doc.exists) {
-            const settings = doc.data();
-            autoClockOutSettings.enabled = settings.enableAutoClockOut || false;
-            autoClockOutSettings.workHours = settings.workHours || 8;
+            const settings = doc.data() || {};
+            // 啟用旗標健全化處理（支援布林或可轉換值）
+            const enabledRaw = settings.enableAutoClockOut;
+            autoClockOutSettings.enabled = typeof enabledRaw === 'boolean' ? enabledRaw : !!enabledRaw;
+
+            // 工時健全化：需為正數，否則回退為8
+            let hours = parseFloat(settings.workHours);
+            if (!isFinite(hours) || hours <= 0) {
+                hours = 8;
+            }
+            autoClockOutSettings.workHours = hours;
+        } else {
+            // 設定文件不存在，使用預設值
+            autoClockOutSettings.enabled = false;
+            autoClockOutSettings.workHours = 8;
         }
+
+        return autoClockOutSettings;
     } catch (error) {
         console.error('載入自動下班打卡設定失敗:', error);
+        // 失敗時使用安全預設
+        autoClockOutSettings.enabled = false;
+        autoClockOutSettings.workHours = 8;
+        autoClockOutSettings.loaded = false;
+        // 一次性提示
+        if (!state.autoSettingsErrorPromptShown && typeof showToast === 'function') {
+            state.autoSettingsErrorPromptShown = true;
+            showToast('無法讀取自動下班設定，已使用預設值', true);
+            // 60 秒後允許再次提示
+            setTimeout(() => { state.autoSettingsErrorPromptShown = false; }, 60000);
+        }
+        return autoClockOutSettings;
     }
 }
 
