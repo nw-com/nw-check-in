@@ -10,71 +10,42 @@ if (typeof state.clockInStatus === 'undefined') {
     state.clockInStatus = 'none';
 }
 
-// 根據狀態更新顯示文本和樣式
+// 根據狀態更新顯示文本和樣式（優先使用 manualLabel）
 function updateStatusTextAndStyle(statusText, statusDisplay) {
+    const displayText = typeof getStatusDisplayText === 'function'
+        ? getStatusDisplayText(state.clockInStatus || '尚未打卡', state.outboundLocation, state.manualLabel)
+        : (state.clockInStatus || '尚未打卡');
+    statusText.textContent = displayText;
+    // 保持既有背景樣式邏輯：根據狀態類型設定背景色
     switch(state.clockInStatus) {
         case '上班':
-            statusText.textContent = '上班中-辦公室';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '下班':
-            statusText.textContent = '已下班';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-red-100 text-red-800';
             break;
         case '已下班-未打卡':
-            statusText.textContent = '已下班-未打卡';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800';
             break;
         case '外出':
-            let outboundText = '外出中';
-            if (state.outboundLocation) {
-                outboundText = `外出-${state.outboundLocation}`;
-            }
-            statusText.textContent = outboundText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-emerald-100 text-emerald-800';
             break;
         case '抵達':
-            let arriveText = '抵達';
-            if (state.outboundLocation) {
-                arriveText = `抵達-${state.outboundLocation}`;
-            }
-            statusText.textContent = arriveText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '離開':
-            let leaveText = '離開';
-            if (state.outboundLocation) {
-                leaveText = `離開-${state.outboundLocation}`;
-            }
-            statusText.textContent = leaveText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-amber-100 text-amber-800';
             break;
         case '返回':
-            statusText.textContent = '返回-辦公室';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-pink-100 text-pink-800';
             break;
         case '臨時請假':
-            let leaveReasonText = '請假中';
-            // 根據請假審核狀態顯示不同文字
-            if (state.leaveStatus === 'approved') {
-                leaveReasonText = '已請假';
-            }
-            if (state.leaveReason) {
-                leaveReasonText = `${leaveReasonText}-${state.leaveReason}`;
-            }
-            statusText.textContent = leaveReasonText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-orange-100 text-orange-800';
             break;
         case '特殊勤務':
-            let dutyText = '出勤中';
-            if (state.dutyType) {
-                dutyText = `出勤-${state.dutyType}`;
-            }
-            statusText.textContent = dutyText;
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-purple-100 text-purple-800';
             break;
         default:
-            statusText.textContent = '尚未打卡';
             statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-gray-100 text-gray-800';
     }
 }
@@ -117,6 +88,7 @@ function updateStatusDisplay() {
                     state.dutyType = doc.data().dutyType || null;
                     state.leaveReason = doc.data().leaveReason || null;
                     state.leaveStatus = doc.data().leaveStatus || null;
+                    state.manualLabel = doc.data().manualLabel || null;
                 }
                 
                 // 根據狀態更新顯示
@@ -135,53 +107,9 @@ function updateStatusDisplay() {
 function updateDashboardStatus() {
     const dashboardStatusElement = document.getElementById('my-status');
     if (dashboardStatusElement) {
-        let statusText = '';
-        switch(state.clockInStatus) {
-            case '上班':
-                statusText = '上班中-辦公室';
-                break;
-            case '下班':
-                statusText = '已下班';
-                break;
-            case '已下班-未打卡':
-                statusText = '已下班-未打卡';
-                break;
-            case '外出':
-                statusText = '外出中';
-                if (state.outboundLocation) {
-                    statusText = `外出-${state.outboundLocation}`;
-                }
-                break;
-            case '抵達':
-                statusText = '抵達';
-                if (state.outboundLocation) {
-                    statusText = `抵達-${state.outboundLocation}`;
-                }
-                break;
-            case '離開':
-                statusText = '離開';
-                if (state.outboundLocation) {
-                    statusText = `離開-${state.outboundLocation}`;
-                }
-                break;
-            case '返回':
-                statusText = '返回-辦公室';
-                break;
-            case '臨時請假':
-                statusText = '請假中';
-                if (state.leaveReason) {
-                    statusText = `請假-${state.leaveReason}`;
-                }
-                break;
-            case '特殊勤務':
-                statusText = '出勤中';
-                if (state.dutyType) {
-                    statusText = `出勤-${state.dutyType}`;
-                }
-                break;
-            default:
-                statusText = '尚未打卡';
-        }
+        const statusText = typeof getStatusDisplayText === 'function'
+            ? getStatusDisplayText(state.clockInStatus || '尚未打卡', state.outboundLocation, state.manualLabel)
+            : (state.clockInStatus || '尚未打卡');
         dashboardStatusElement.textContent = statusText;
     }
 }
@@ -969,12 +897,23 @@ function closeAllModals() {
 let autoClockOutTimer = null;
 let autoClockOutSettings = {
     enabled: false,
-    workHours: 8
+    workHours: 8,
+    loaded: false
 };
+// 僅提示一次設定載入錯誤
+let autoClockOutSettingsErrorNotified = false;
 
 // 載入自動下班打卡設定
 async function loadAutoClockOutSettings() {
     try {
+        // 未登入時跳過遠端讀取並使用預設值，避免觸發規則限制
+        if (!firebase.auth().currentUser) {
+            autoClockOutSettings.enabled = false;
+            autoClockOutSettings.workHours = 8;
+            autoClockOutSettings.loaded = false;
+            console.log('尚未登入，跳過自動下班設定讀取，使用預設值');
+            return;
+        }
         const settingsRef = firebase.firestore().collection('settings').doc('general');
         const doc = await settingsRef.get();
         
@@ -982,9 +921,22 @@ async function loadAutoClockOutSettings() {
             const settings = doc.data();
             autoClockOutSettings.enabled = settings.enableAutoClockOut || false;
             autoClockOutSettings.workHours = settings.workHours || 8;
+            autoClockOutSettings.loaded = true;
+        } else {
+            // 設定不存在時使用預設值，不拋錯
+            autoClockOutSettings.enabled = false;
+            autoClockOutSettings.workHours = 8;
+            autoClockOutSettings.loaded = false;
+            console.log('一般設定不存在，使用預設值');
         }
     } catch (error) {
         console.error('載入自動下班打卡設定失敗:', error);
+        autoClockOutSettings.loaded = false;
+        // 僅提示一次，避免多次讀取造成干擾
+        if (!autoClockOutSettingsErrorNotified && typeof showToast === 'function') {
+            showToast('無法讀取自動下班設定，使用預設值', true);
+            autoClockOutSettingsErrorNotified = true;
+        }
     }
 }
 

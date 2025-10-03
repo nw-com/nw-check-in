@@ -33,7 +33,8 @@ function calculateWorkingTime(status, clockInTime) {
  * @param {string} location - 位置信息
  * @returns {string} 格式化的狀態文本
  */
-function getStatusDisplayText(status, location) {
+function getStatusDisplayText(status, location, manualLabel) {
+    if (manualLabel) return manualLabel;
     switch(status) {
         case '上班': return '上班中-辦公室';
         case '下班': return '已下班';
@@ -54,15 +55,31 @@ function getStatusDisplayText(status, location) {
  * @returns {string} 對應的CSS顏色類
  */
 function getStatusColor(status) {
-    if (status.includes('上班中')) return 'text-green-600';
-    if (status.includes('已下班-未打卡')) return 'text-yellow-600';
-    if (status.includes('已下班')) return 'text-red-600';
-    if (status.includes('外出-')) return 'text-emerald-700';
-    if (status.includes('抵達-')) return 'text-blue-600';
-    if (status.includes('離開-')) return 'text-amber-800';
-    if (status.includes('返回-')) return 'text-pink-600';
-    if (status.includes('請假中')) return 'text-orange-500';
-    if (status.includes('出勤中')) return 'text-purple-600';
+    if (!status || typeof status !== 'string') return 'text-gray-500';
+    const s = status.trim();
+    // 先處理純狀態類型
+    switch (s) {
+        case '上班': return 'text-green-600';
+        case '下班': return 'text-red-600';
+        case '已下班-未打卡': return 'text-yellow-600';
+        case '外出': return 'text-emerald-700';
+        case '抵達': return 'text-blue-600';
+        case '離開': return 'text-amber-800';
+        case '返回': return 'text-pink-600';
+        case '臨時請假': return 'text-orange-500';
+        case '特殊勤務': return 'text-purple-600';
+        case '尚未打卡': return 'text-gray-500';
+    }
+    // 兼容完整顯示文字（含地點/細節）
+    if (s.includes('上班中')) return 'text-green-600';
+    if (s.includes('已下班-未打卡')) return 'text-yellow-600';
+    if (s.includes('已下班')) return 'text-red-600';
+    if (s.includes('外出')) return 'text-emerald-700';
+    if (s.includes('抵達')) return 'text-blue-600';
+    if (s.includes('離開')) return 'text-amber-800';
+    if (s.includes('返回')) return 'text-pink-600';
+    if (s.includes('請假')) return 'text-orange-500';
+    if (s.includes('出勤')) return 'text-purple-600';
     return 'text-gray-500';
 }
 
