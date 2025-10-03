@@ -52,18 +52,14 @@ function updateStatusTextAndStyle(statusText, statusDisplay) {
                 leaveText = `離開-${state.outboundLocation}`;
             }
             statusText.textContent = leaveText;
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-amber-100 text-amber-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-blue-100 text-blue-800';
             break;
         case '返回':
             statusText.textContent = '返回-辦公室';
-            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-pink-100 text-pink-800';
+            statusDisplay.className = 'mb-4 p-3 rounded-lg text-center bg-green-100 text-green-800';
             break;
         case '臨時請假':
-            let leaveReasonText = '請假中';
-            // 根據請假審核狀態顯示不同文字
-            if (state.leaveStatus === 'approved') {
-                leaveReasonText = '已請假';
-            }
+            let leaveReasonText = (state.leaveStatus === 'approved') ? '已請假' : '請假申請';
             if (state.leaveReason) {
                 leaveReasonText = `${leaveReasonText}-${state.leaveReason}`;
             }
@@ -172,12 +168,12 @@ function updateDashboardStatus() {
             case '返回':
                 statusText = '返回-辦公室';
                 break;
-            case '臨時請假':
-                statusText = '請假中';
-                if (state.leaveReason) {
-                    statusText = `請假-${state.leaveReason}`;
-                }
-                break;
+        case '臨時請假':
+            statusText = (state.leaveStatus === 'approved') ? '已請假' : '請假申請';
+            if (state.leaveReason) {
+                statusText = `${statusText}-${state.leaveReason}`;
+            }
+            break;
             case '特殊勤務':
                 statusText = '出勤中';
                 if (state.dutyType) {
@@ -574,7 +570,7 @@ function openTempLeaveModal() {
     // 彈窗標題
     const title = document.createElement('h3');
     title.className = 'text-lg font-bold mb-4 text-center';
-    title.textContent = '臨時請假';
+            title.textContent = '請假申請';
     
     // 創建請假事由選擇
     const reasonLabel = document.createElement('label');
@@ -722,7 +718,7 @@ function openTempLeaveModal() {
                 leaveStartTime: firebase.firestore.Timestamp.fromDate(startTime),
                 leaveEndTime: firebase.firestore.Timestamp.fromDate(endTime)
             });
-            console.log('用戶狀態已更新為臨時請假');
+            console.log('用戶狀態已更新為請假申請');
             
             // 更新本地狀態
             state.clockInStatus = '臨時請假';

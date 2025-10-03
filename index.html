@@ -715,12 +715,12 @@
                 function getStatusColor(status) {
                     switch (status) {
                         case '上班': return 'bg-green-100 text-green-800';
-                        case '下班': return 'bg-blue-100 text-blue-800';
-                        case '外出': return 'bg-yellow-100 text-yellow-800';
-                        case '返回': return 'bg-purple-100 text-purple-800';
-                        case '抵達': return 'bg-orange-100 text-orange-800';
-                        case '離開': return 'bg-gray-100 text-gray-800';
-                        case '臨時請假': return 'bg-red-100 text-red-800';
+                        case '下班': return 'bg-red-100 text-red-800';
+                        case '外出': return 'bg-blue-100 text-blue-800';
+                        case '返回': return 'bg-green-100 text-green-800';
+                        case '抵達': return 'bg-blue-100 text-blue-800';
+                        case '離開': return 'bg-blue-100 text-blue-800';
+                        case '臨時請假': return 'bg-orange-100 text-orange-800';
                         case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
                         default: return 'bg-gray-100 text-gray-800';
                     }
@@ -789,15 +789,15 @@
                             <div id="my-status" class="text-gray-600">讀取中...</div>
                         </div>
                         <div id="all-users-summary-card" class="bg-white p-4 rounded-lg mb-4 shadow-sm border cursor-pointer">
-                            <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有同仁狀態</h3>
-                            <div class="grid grid-cols-2 gap-2 text-gray-700">
-                                <div>上班 : <span id="count-work">0</span> 人</div>
-                                <div>外出 : <span id="count-outbound">0</span> 人</div>
-                                <div>下班 : <span id="count-off">0</span> 人</div>
-                                <div>請假 : <span id="count-leave">0</span> 人</div>
-                            </div>
-                            <div class="text-xs text-gray-500 mt-2">點擊查看所有同仁狀態</div>
-                        </div>
+                           <h3 class="font-bold text-gray-800 mb-2 flex items-center"><i data-lucide="users" class="w-4 h-4 mr-2"></i>所有同仁狀態</h3>
+                           <div class="grid grid-cols-2 gap-2 text-gray-700">
+                                <div><span class="text-green-600">上班</span> : <span id="count-work">0</span> 人</div>
+                                <div><span class="text-blue-600">外出</span> : <span id="count-outbound">0</span> 人</div>
+                                <div><span class="text-red-600">下班</span> : <span id="count-off">0</span> 人</div>
+                                <div><span class="text-orange-600">請假</span> : <span id="count-leave">0</span> 人</div>
+                           </div>
+                           <div class="text-xs text-gray-500 mt-2">點擊查看所有同仁狀態</div>
+                       </div>
                     </div>
                 `;
                 lucide.createIcons();
@@ -926,17 +926,30 @@
                         }
                     });
 
-                    // 計算摘要人數
-                    let countWork = 0, countOutbound = 0, countOff = 0, countLeave = 0;
-                    visibleUsersList.forEach(user => {
-                        const s = user.clockInStatus || '';
-                        const leave = user.leaveStatus || '';
-                        if (s === '上班' || s === '返回') countWork++;
-                        else if (s === '外出' || s === '抵達' || s === '離開') countOutbound++;
-                        else if (s === '下班' || s === '已下班-未打卡') countOff++;
-                        const isLeave = s === '臨時請假' || leave === 'approved' || leave === 'pending';
-                        if (isLeave) countLeave++;
-                    });
+                   // 計算摘要人數
+                   let countWork = 0, countOutbound = 0, countOff = 0, countLeave = 0;
+                    const now = new Date();
+                    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                   visibleUsersList.forEach(user => {
+                       const s = user.clockInStatus || '';
+                       const leave = user.leaveStatus || '';
+                       if (s === '上班' || s === '返回') countWork++;
+                       else if (s === '外出' || s === '抵達' || s === '離開') countOutbound++;
+                       else if (s === '下班' || s === '已下班-未打卡') countOff++;
+                        
+                        // 檢查請假狀態：臨時請假或當天有效的請假申請
+                        let isLeave = s === '臨時請假';
+                        if (!isLeave && (leave === 'approved' || leave === 'pending')) {
+                            // 檢查是否有當天有效的請假記錄
+                            if (user.leaveStartTime && user.leaveEndTime) {
+                                const leaveStart = user.leaveStartTime.toDate ? user.leaveStartTime.toDate() : new Date(user.leaveStartTime);
+                                const leaveEnd = user.leaveEndTime.toDate ? user.leaveEndTime.toDate() : new Date(user.leaveEndTime);
+                                isLeave = leaveStart <= todayEnd && leaveEnd >= todayStart;
+                            }
+                        }
+                       if (isLeave) countLeave++;
+                   });
                     if (countWorkEl) countWorkEl.textContent = countWork;
                     if (countOutboundEl) countOutboundEl.textContent = countOutbound;
                     if (countOffEl) countOffEl.textContent = countOff;
@@ -1097,7 +1110,7 @@
                         <div id="clock-in-buttons" class="grid grid-cols-2 gap-2 pt-4">
                             <button id="work-toggle-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
                             <button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
-                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600">臨時請假</button>
+                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600">請假申請</button>
                             <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-purple-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">特殊勤務</button>
                         </div>
                     </div>`;
@@ -1458,7 +1471,7 @@
                 modal.innerHTML = `
                     <div class="modal-content bg-white rounded-lg shadow-xl w-11/12 max-w-md mx-auto overflow-hidden">
                         <div class="modal-header bg-orange-500 text-white px-4 py-3 flex justify-between items-center">
-                            <h3 class="text-lg font-semibold">臨時請假申請</h3>
+                            <h3 class="text-lg font-semibold">請假申請</h3>
                             <button class="modal-close text-white hover:text-gray-200">
                                 <i data-lucide="x" class="w-5 h-5"></i>
                             </button>
@@ -2464,7 +2477,7 @@
                         case '上班': return 'bg-green-100 text-green-800';
                         case '下班': return 'bg-red-100 text-red-800';
                         case '外出': return 'bg-blue-100 text-blue-800';
-                        case '返回': return 'bg-purple-100 text-purple-800';
+                        case '返回': return 'bg-green-100 text-green-800';
                         case '臨時請假': return 'bg-orange-100 text-orange-800';
                         case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
                         default: return 'bg-gray-100 text-gray-800';
@@ -4397,9 +4410,18 @@
 
             function renderLeaveInfo(userData) {
                 if (!userData) return '目前沒有請假記錄';
-                const isLeave = userData.clockInStatus === '臨時請假' || userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending';
+                let isLeave = userData.clockInStatus === '臨時請假';
+                if (!isLeave && (userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending')) {
+                    const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+                    const startTime = toDate(userData.leaveStartTime);
+                    const endTime = toDate(userData.leaveEndTime);
+                    const now = new Date();
+                    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                    isLeave = !!(startTime && endTime && startTime <= todayEnd && endTime >= todayStart);
+                }
                 if (!isLeave) return '目前沒有請假記錄';
-                const statusText = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                const statusText = userData.leaveStatus === 'approved' ? '已請假' : '請假申請';
                 const reasonText = userData.leaveReason ? `${userData.leaveReason}` : '';
                 const typeText = userData.reasonType ? `(${userData.reasonType})` : '';
                 const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
@@ -4634,23 +4656,28 @@
                     showLoading(true);
 
                     try {
-                        // 將照片轉換為 Data URL 並儲存
-                        const photoPromises = capturedPhotos.map(async (photo) => {
-                            return new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                    resolve({
-                                        url: reader.result,
-                                        description: photo.description
-                                    });
-                                };
-                                reader.readAsDataURL(photo.blob);
-                            });
+                        // 將照片上傳到 Storage，僅在 Firestore 保存下載連結
+                        const ts = Date.now();
+                        const uid = state.currentUser.uid;
+                        const photoUploadPromises = capturedPhotos.map(async (photo, idx) => {
+                            const fileName = `${ts}_${idx + 1}.jpg`;
+                            const storagePath = `clockInPhotos/${uid}/${ts}/${fileName}`;
+                            const storageRef = ref(storage, storagePath);
+                            await uploadBytes(storageRef, photo.blob, { contentType: 'image/jpeg' });
+                            const url = await getDownloadURL(storageRef);
+                            return { url, description: photo.description };
                         });
 
-                        const uploadedPhotos = await Promise.all(photoPromises);
+                        const uploadedPhotos = await Promise.all(photoUploadPromises);
                         const photoUrls = uploadedPhotos.map(p => p.url);
                         const descriptions = uploadedPhotos.map(p => p.description);
+
+                        // 驗證座標為數值，避免 Firestore 寫入 400
+                        if (typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+                            console.error('Clock in error: invalid location coordinates', location);
+                            showToast('定位座標無效，請重新定位後再打卡', true);
+                            return;
+                        }
 
                         const recordData = {
                             userId: state.currentUser.uid,
@@ -4719,8 +4746,8 @@
                         showPage('clock-in', 'location');  // 改為顯示定位打卡頁面
 
                     } catch (error) {
-                        console.error("Clock in error:", error);
-                        showToast("打卡失敗，請稍後再試", true);
+                        console.error("Clock in error:", { code: error.code, message: error.message, name: error.name });
+                        showToast(`打卡失敗：${error.message || '請稍後再試'}`, true);
                     } finally {
                         showLoading(false);
                     }
@@ -4762,7 +4789,16 @@
             // 渲染請假資訊（第二個版本，使用統一的判斷邏輯）
             function renderLeaveInfo(userData) {
                 if (!userData) return '目前沒有請假記錄';
-                const isLeave = userData.clockInStatus === '臨時請假' || userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending';
+                let isLeave = userData.clockInStatus === '臨時請假';
+                if (!isLeave && (userData.leaveStatus === 'approved' || userData.leaveStatus === 'pending')) {
+                    const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+                    const startTime = toDate(userData.leaveStartTime);
+                    const endTime = toDate(userData.leaveEndTime);
+                    const now = new Date();
+                    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                    isLeave = !!(startTime && endTime && startTime <= todayEnd && endTime >= todayStart);
+                }
                 if (!isLeave) {
                     // 檢查是否為特殊勤務
                     if (userData.clockInStatus === '特殊勤務') {
@@ -4798,7 +4834,7 @@
                     }
                     return '目前沒有請假記錄';
                 }
-                const leaveStatus = userData.leaveStatus === 'approved' ? '已請假' : '請假中';
+                const leaveStatus = userData.leaveStatus === 'approved' ? '已請假' : '請假申請';
                 const reason = userData.leaveReason || '未指定原因';
                 
                 const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
