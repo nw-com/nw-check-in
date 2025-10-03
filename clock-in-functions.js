@@ -1105,7 +1105,8 @@ async function performAutoClockOut() {
             location: lastLocation,
             photoUrls: [],
             descriptions: [],
-            isAutomatic: true
+            isAutomatic: true,
+            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
         };
         
         // 保存打卡記錄
@@ -1276,7 +1277,8 @@ async function checkAllUsersOvertimeStatus() {
                         location: lastLocation,
                         photoUrls: [],
                         descriptions: [],
-                        isAutomatic: true
+                        isAutomatic: true,
+                        deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
                     };
                     
                     await firebase.firestore().collection('clockInRecords').add(recordData);

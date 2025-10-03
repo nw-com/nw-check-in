@@ -306,6 +306,49 @@
             trackingMarkers: [],
         };
         
+        // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
+        (function initDeviceId(){
+            try {
+                const key = 'device_id';
+                let id = localStorage.getItem(key);
+                if (!id) {
+                    const bytes = new Uint8Array(16);
+                    crypto.getRandomValues(bytes);
+                    id = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    localStorage.setItem(key, id);
+                }
+                state.deviceId = id;
+            } catch (e) {
+                console.warn('初始化裝置ID失敗', e);
+                state.deviceId = 'unknown-device';
+            }
+        })();
+
+        // 角色對應中文標籤
+        function roleLabel(role) {
+            switch (role) {
+                case 'field': return '外勤';
+                case 'user': return '內勤';
+                case 'junior_manager': return '初階主管';
+                case 'manager': return '高階主管';
+                case 'hr': return '人事';
+                case 'admin': return '管理員';
+                default: return role || '內勤';
+            }
+        }
+
+        // 角色徽章顏色樣式
+        function roleBadgeClass(role) {
+            switch (role) {
+                case 'admin': return 'bg-red-100 text-red-700';
+                case 'manager': return 'bg-purple-100 text-purple-700';
+                case 'junior_manager': return 'bg-violet-100 text-violet-700';
+                case 'hr': return 'bg-amber-100 text-amber-700';
+                case 'field': return 'bg-green-100 text-green-700';
+                default: return 'bg-blue-100 text-blue-700'; // user / 其他
+            }
+        }
+        
         const loadingScreen = document.getElementById('loading-screen');
         
         function showLoading(show) {
@@ -433,21 +476,24 @@
                 const navHr = document.getElementById('nav-hr');
                 const navGroup = document.getElementById('nav-group');
 
-                // 導覽顯示權限（依現有角色：admin、manager、user）
+                // 導覽顯示權限（擴充角色：admin, manager, junior_manager, hr, user, field）
                 const role = state.currentUserData.role;
                 [navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
                 if (role === 'admin') {
+                    // 管理員：顯示追蹤、設定、人事；不顯示群組（依需求）
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
                     navHr.classList.remove('hide');
-                    navGroup.classList.remove('hide');
-                } else if (role === 'manager') {
+                    // navGroup 保持隱藏
+                } else if (role === 'manager' || role === 'junior_manager') {
+                    // 主管與初階主管：顯示追蹤與群組，隱藏設定與人事
                     navTracking.classList.remove('hide');
                     navGroup.classList.remove('hide');
-                    navSettings.classList.add('hide');
-                    navHr.classList.add('hide');
+                } else if (role === 'hr') {
+                    // 人事：僅顯示人事頁籤
+                    navHr.classList.remove('hide');
                 } else {
-                    // user：不顯示追蹤、設定、HR、群組
+                    // user/field：不顯示追蹤、設定、HR、群組
                 }
                 
                 loginPage.classList.add('hide');
@@ -494,12 +540,12 @@
                 const router = {
                     'dashboard': renderDashboard,
                     'clock-in': () => renderClockIn(subPage || 'location'),
-                    'tracking': () => ['admin','manager'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
+                    'tracking': () => ['admin','manager','junior_manager'].includes(state.currentUserData.role) ? renderTracking(subPage || 'map') : renderAccessDenied(),
                     'features': () => renderFeatures(subPage || 'news'),
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
                     'hr': () => state.currentUserData.role === 'admin' ? renderHR(subPage || 'attendance') : renderAccessDenied(),
-                    'group': () => ['admin','manager'].includes(state.currentUserData.role) ? renderGroup(subPage || 'map') : renderAccessDenied()
+                    'group': () => ['manager','junior_manager'].includes(state.currentUserData.role) ? renderGroup(subPage || 'map') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
                 try {
@@ -2602,6 +2648,12 @@
                                 <button data-userid="${user.id}" class="edit-user-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="edit" class="w-4 h-4"></i></button>
                                 <button data-userid="${user.id}" class="delete-user-btn p-2 text-gray-500 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                             </div>`;
+                        // 覆寫角色徽章呈現：使用 roleLabel 與 roleBadgeClass
+                        const badgeSpan = userElement.querySelector('span.text-xs.px-2.py-1.rounded-full');
+                        if (badgeSpan) {
+                            badgeSpan.className = `text-xs px-2 py-1 rounded-full ${roleBadgeClass(user.role)}`;
+                            badgeSpan.textContent = roleLabel(user.role);
+                        }
                         userList.appendChild(userElement);
                     });
                     lucide.createIcons();
@@ -3564,10 +3616,17 @@
                                 <div>
                                     <label for="user-role" class="block text-sm font-medium text-gray-700">角色 (必填)</label>
                                     <select id="user-role" class="w-full mt-1 px-3 py-2 border rounded-md">
-                                        <option value="user" ${isEditing && user.role === 'user' ? 'selected' : ''}>內勤 (User)</option>
-                                        <option value="manager" ${isEditing && user.role === 'manager' ? 'selected' : ''}>高階主管 (Manager)</option>
-                                        <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>管理員 (Admin)</option>
+                                        <option value="field" ${isEditing && user.role === 'field' ? 'selected' : ''}>外勤</option>
+                                        <option value="user" ${isEditing && user.role === 'user' ? 'selected' : ''}>內勤</option>
+                                        <option value="junior_manager" ${isEditing && user.role === 'junior_manager' ? 'selected' : ''}>初階主管</option>
+                                        <option value="manager" ${isEditing && user.role === 'manager' ? 'selected' : ''}>高階主管</option>
+                                        <option value="hr" ${isEditing && user.role === 'hr' ? 'selected' : ''}>人事</option>
+                                        <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>管理員</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">第一次打卡裝置ID</label>
+                                    <input type="text" id="user-first-device-id" value="${isEditing ? (user.firstClockInDeviceId || '') : ''}" class="w-full mt-1 px-3 py-2 border rounded-md bg-gray-100" disabled>
                                 </div>
                                 <p id="user-form-error" class="text-red-500 text-sm text-center"></p>
                                 <div class="flex justify-end space-x-2 pt-2 flex-shrink-0">
@@ -4353,6 +4412,7 @@
                             location: new GeoPoint(location.lat, location.lng),
                             photoUrls,
                             descriptions,
+                            deviceId: state.deviceId || 'unknown-device'
                         };
                         
                         // 如果是外出打卡，添加地點名稱
@@ -4361,6 +4421,18 @@
                         }
                         
                         await addDoc(collection(db, "clockInRecords"), recordData);
+
+                        // 首次打卡裝置ID寫入：僅當使用者尚未有 firstClockInDeviceId
+                        try {
+                            const userRef = doc(db, "users", state.currentUser.uid);
+                            const userSnap = await getDoc(userRef);
+                            const hasFirst = userSnap.exists() && userSnap.data().firstClockInDeviceId;
+                            if (!hasFirst && type === '上班') {
+                                await updateDoc(userRef, { firstClockInDeviceId: state.deviceId || 'unknown-device' });
+                            }
+                        } catch (e) {
+                            console.warn('寫入首次打卡裝置ID失敗', e);
+                        }
 
                         const userUpdateData = {
                             status: type,
