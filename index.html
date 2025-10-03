@@ -1110,8 +1110,7 @@
                         <div id="clock-in-buttons" class="grid grid-cols-2 gap-2 pt-4">
                             <button id="work-toggle-btn" data-type="上班" class="clock-in-btn bg-green-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-green-600">上班打卡</button>
                             <button id="outbound-cycle-btn" data-type="外出" class="clock-in-btn bg-blue-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-blue-600">外出打卡</button>
-                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600">請假申請</button>
-                            <button data-type="特殊勤務" id="special-duty-btn" class="clock-in-btn bg-purple-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-purple-600">特殊勤務</button>
+                            <button data-type="臨時請假" id="temp-leave-btn" class="clock-in-btn bg-orange-500 text-white font-semibold py-3 px-4 rounded-md hover:bg-orange-600 col-span-2">請假申請</button>
                         </div>
                     </div>`;
                 lucide.createIcons();
@@ -1156,7 +1155,40 @@
                             // 創建標題
                             const title = document.createElement('h3');
                             title.className = 'text-lg font-semibold mb-4';
-                            title.textContent = '請輸入外出地點';
+                            title.textContent = '請選擇勤務項目並輸入外出地點';
+
+                            // 勤務項目選單
+                            const dutyContainer = document.createElement('div');
+                            dutyContainer.className = 'mb-4';
+                            const dutyLabel = document.createElement('label');
+                            dutyLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+                            dutyLabel.textContent = '勤務項目';
+                            const dutySelect = document.createElement('select');
+                            dutySelect.id = 'outbound-duty-type';
+                            dutySelect.className = 'w-full border border-gray-300 rounded-md p-2';
+                            ['例行督察','例會','區大','臨時會','簡報','其他'].forEach(opt => {
+                                const o = document.createElement('option');
+                                o.value = opt;
+                                o.textContent = opt;
+                                dutySelect.appendChild(o);
+                            });
+                            dutyContainer.appendChild(dutyLabel);
+                            dutyContainer.appendChild(dutySelect);
+
+                            // 其他勤務項目輸入框（預設隱藏）
+                            const otherDutyContainer = document.createElement('div');
+                            otherDutyContainer.id = 'outbound-other-duty-container';
+                            otherDutyContainer.className = 'mb-4 hidden';
+                            const otherDutyLabel = document.createElement('label');
+                            otherDutyLabel.className = 'block text-sm font-medium text-gray-700 mb-1';
+                            otherDutyLabel.textContent = '其他勤務項目';
+                            const otherDutyInput = document.createElement('input');
+                            otherDutyInput.id = 'outbound-other-duty';
+                            otherDutyInput.type = 'text';
+                            otherDutyInput.className = 'w-full border border-gray-300 rounded-md p-2';
+                            otherDutyInput.placeholder = '請輸入勤務項目';
+                            otherDutyContainer.appendChild(otherDutyLabel);
+                            otherDutyContainer.appendChild(otherDutyInput);
                             
                             // 創建輸入框
                             const input = document.createElement('input');
@@ -1169,6 +1201,14 @@
                             const buttonContainer = document.createElement('div');
                             buttonContainer.className = 'flex justify-end space-x-2';
                             
+                            // 勤務項目切換事件（顯示/隱藏其他輸入框）
+                            dutySelect && dutySelect.addEventListener('change', () => {
+                                if (dutySelect.value === '其他') {
+                                    otherDutyContainer.classList.remove('hidden');
+                                } else {
+                                    otherDutyContainer.classList.add('hidden');
+                                }
+                            });
                             // 創建取消按鈕
                             const cancelButton = document.createElement('button');
                             cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded-md';
@@ -1183,26 +1223,88 @@
                             confirmButton.className = 'px-4 py-2 bg-blue-500 text-white rounded-md';
                             confirmButton.textContent = '確認';
                             confirmButton.addEventListener('click', () => {
+                                const dutyTypeEl = document.getElementById('outbound-duty-type');
+                                const dutyType = dutyTypeEl ? dutyTypeEl.value : '';
+                                let dutyName = dutyType;
+                                if (dutyType === '其他') {
+                                    const otherDuty = document.getElementById('outbound-other-duty').value.trim();
+                                    if (!otherDuty) {
+                                        alert('請輸入勤務項目');
+                                        return;
+                                    }
+                                    dutyName = otherDuty;
+                                }
                                 const locationText = document.getElementById('outbound-location').value.trim();
-                                 if (locationText) {
-                                     state.outboundLocation = locationText;
-                                     document.body.removeChild(backdrop);
-                                     document.body.removeChild(modal);
-                                     // 打開相機，傳遞當前位置和外出地點名稱
-                                     if (state.currentLocation) {
-                                         openCameraModal(type, { ...state.currentLocation, name: locationText });
-                                     } else {
-                                         alert('無法獲取當前位置，請確保已開啟定位服務');
-                                     }
-                                 } else {
-                                     alert('請輸入外出地點');
-                                 }
+                                if (locationText) {
+                                    state.outboundLocation = locationText;
+                                    state.dutyType = dutyName;
+                                    // 保存地點到設定的 savedLocations（最多10筆）
+                                    try {
+                                        if (!state.savedLocations) {
+                                            state.savedLocations = [];
+                                        }
+                                        const exists = state.savedLocations.some(loc => loc === locationText);
+                                        if (!exists) {
+                                            state.savedLocations.push(locationText);
+                                            if (state.savedLocations.length > 10) {
+                                                state.savedLocations.shift();
+                                            }
+                                            if (firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
+                                                firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                                                    savedLocations: state.savedLocations
+                                                }).catch(err => console.warn('保存地址到設定失敗', err));
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn('處理 savedLocations 失敗', e);
+                                    }
+                                    // 保存外出地點到系統位置設定（otherLocations），僅管理員具有寫入權限
+                                    try {
+                                        if (firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
+                                            const settingsRef = firebase.firestore().collection('settings').doc('location');
+                                            // 構建位置物件
+                                            const locEntry = {
+                                                name: locationText,
+                                                lat: (state.currentLocation && typeof state.currentLocation.lat === 'number') ? state.currentLocation.lat : null,
+                                                lng: (state.currentLocation && typeof state.currentLocation.lng === 'number') ? state.currentLocation.lng : null,
+                                                radius: 100
+                                            };
+                                            // 先讀取，避免重複名稱
+                                            settingsRef.get().then(docSnap => {
+                                                const settings = docSnap.exists ? docSnap.data() : {};
+                                                const otherLocations = Array.isArray(settings.otherLocations) ? settings.otherLocations : [];
+                                                const nameExists = otherLocations.some(l => (l && l.name) === locationText);
+                                                if (!nameExists) {
+                                                    settingsRef.set({
+                                                        otherLocations: firebase.firestore.FieldValue.arrayUnion(locEntry),
+                                                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                                    }, { merge: true }).catch(err => console.warn('保存其他位置失敗', err));
+                                                }
+                                            }).catch(err => console.warn('讀取位置設定失敗', err));
+                                        }
+                                    } catch (e) {
+                                        console.warn('處理 otherLocations 失敗', e);
+                                    }
+                                    document.body.removeChild(backdrop);
+                                    document.body.removeChild(modal);
+                                    // 打開相機，傳遞當前位置和外出地點名稱
+                                    if (state.currentLocation) {
+                                        openCameraModal(type, { ...state.currentLocation, name: locationText });
+                                    } else {
+                                        alert('無法獲取當前位置，請確保已開啟定位服務');
+                                    }
+                                } else {
+                                    alert('請輸入外出地點');
+                                }
                             });
                             
                             // 組裝彈窗
                             buttonContainer.appendChild(cancelButton);
                             buttonContainer.appendChild(confirmButton);
                             modal.appendChild(title);
+                            // 插入勤務項目選單與其他輸入
+                            modal.appendChild(dutyContainer);
+                            modal.appendChild(otherDutyContainer);
                             modal.appendChild(input);
                             modal.appendChild(buttonContainer);
                             
@@ -1212,7 +1314,7 @@
                         } else if (type === "抵達" || type === "離開" || type === "返回") {
                             // 抵達、離開、返回打卡也需要拍照
                             openCameraModal(type, state.currentLocation);
-                        } else if (type === "臨時請假" || type === "特殊勤務") {
+                        } else if (type === "臨時請假") {
                             // 不執行相機操作
                         } else {
                             openCameraModal(type, state.currentLocation);
@@ -1225,10 +1327,7 @@
                     openTempLeaveModal();
                 });
                 
-                // 特殊勤務按鈕
-                document.getElementById('special-duty-btn').addEventListener('click', () => {
-                    openSpecialDutyModal();
-                });
+                // 已移除特殊勤務按鈕
             }
 
             // 個人請假紀錄子頁籤
@@ -4681,6 +4780,9 @@
                             location: new GeoPoint(location.lat, location.lng),
                             photoUrls,
                             descriptions,
+                            // 勤務項目（僅外出時可能存在）
+                            // 若無則不影響規則驗證
+                            dutyType: (type === '外出' && state.dutyType) ? state.dutyType : undefined,
                             deviceId: state.deviceId || 'unknown-device'
                         };
                         
@@ -4713,6 +4815,10 @@
                         // 如果是外出打卡，添加外出地點名稱
                         if (type === '外出' && location.name) {
                             userUpdateData.outboundLocation = location.name;
+                        }
+                        // 外出時同步寫入勤務項目（若有）
+                        if (type === '外出' && state.dutyType) {
+                            userUpdateData.dutyType = state.dutyType;
                         }
                         
                         await updateDoc(doc(db, "users", state.currentUser.uid), userUpdateData);

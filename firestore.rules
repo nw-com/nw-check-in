@@ -45,13 +45,14 @@ service cloud.firestore {
         request.auth.uid == request.resource.data.userId || isAdmin()
       ) &&
       request.resource.data.keys().hasOnly([
-        'userId','type','timestamp','location','photoUrls','descriptions','deviceId','locationName'
+        'userId','type','timestamp','location','photoUrls','descriptions','deviceId','locationName','dutyType','isAutomatic'
       ]) &&
-      request.resource.data.type in ['上班','下班','外出','返回','抵達','離開'] &&
+      request.resource.data.type in ['上班','下班','外出','返回','抵達','離開','自動下班'] &&
       request.resource.data.timestamp is timestamp &&
       request.resource.data.location is latlng &&
       request.resource.data.photoUrls is list &&
       request.resource.data.descriptions is list &&
+      (request.resource.data.isAutomatic == null || request.resource.data.isAutomatic is bool) &&
       request.resource.data.photoUrls.size() <= 3 &&
       request.resource.data.descriptions.size() == request.resource.data.photoUrls.size();
 
@@ -120,6 +121,21 @@ service cloud.firestore {
       allow read: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'junior_manager';
       allow write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // 位置設定：任何登入者可讀，僅管理員可寫
+    match /settings/location {
+      allow read: if request.auth != null;
+      allow write: if isAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'companyLat','companyLng','companyRadius','markAbnormalLocation','otherLocations','updatedAt'
+        ]) &&
+        (request.resource.data.companyLat == null || request.resource.data.companyLat is number) &&
+        (request.resource.data.companyLng == null || request.resource.data.companyLng is number) &&
+        (request.resource.data.companyRadius == null || request.resource.data.companyRadius is number) &&
+        (request.resource.data.markAbnormalLocation == null || request.resource.data.markAbnormalLocation is bool) &&
+        (request.resource.data.otherLocations == null || request.resource.data.otherLocations is list) &&
+        (request.resource.data.updatedAt == null || request.resource.data.updatedAt is timestamp);
     }
   }
 }

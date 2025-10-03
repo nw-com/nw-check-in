@@ -1284,18 +1284,28 @@ async function checkAllUsersOvertimeStatus() {
                     const userRef = firebase.firestore().collection('users').doc(ou.userId);
                     const userDoc = await userRef.get();
                     const data = userDoc.exists ? userDoc.data() : {};
-                    const lastLocation = data.lastLocation || '系統自動-未知位置';
+                    const lastLocation = data.lastLocation;
+                    // 若缺少有效位置，提供預設座標並加註位置名稱
+                    let location = lastLocation;
+                    let locationName = null;
+                    if (!lastLocation || typeof lastLocation.latitude === 'undefined' || typeof lastLocation.longitude === 'undefined') {
+                        location = new firebase.firestore.GeoPoint(0, 0);
+                        locationName = '系統自動-未知位置';
+                    }
                     
                     const recordData = {
                         userId: ou.userId,
                         type: '自動下班',
                         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        location: lastLocation,
+                        location: location,
                         photoUrls: [],
                         descriptions: [],
                         isAutomatic: true,
                         deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
                     };
+                    if (locationName) {
+                        recordData.locationName = locationName;
+                    }
                     
                     await firebase.firestore().collection('clockInRecords').add(recordData);
                     
