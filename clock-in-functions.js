@@ -238,6 +238,12 @@ function initClockInButtonStatus() {
         
         // 更新狀態顯示
         updateStatusDisplay();
+        
+        // 檢查是否有超時需要自動下班打卡的情況
+        setTimeout(() => {
+            checkAndHandleOvertimeClockOut();
+        }, 1000); // 延遲1秒執行，確保狀態已更新
+        
     }).catch(error => {
         console.error("獲取用戶狀態失敗:", error);
         showToast("獲取用戶狀態失敗，請重新整理頁面", true);
@@ -1080,6 +1086,135 @@ function stopAutoClockOutTimer() {
         clearTimeout(autoClockOutTimer);
         autoClockOutTimer = null;
         console.log('已停止自動下班打卡計時器');
+    }
+}
+
+// 檢查當前用戶是否已超時並需要自動下班打卡
+async function checkAndHandleOvertimeClockOut() {
+    try {
+        const user = firebase.auth().currentUser;
+        if (!user) {
+            console.log('用戶未登入，無法檢查超時狀態');
+            return;
+        }
+        
+        // 載入自動下班打卡設定
+        await loadAutoClockOutSettings();
+        
+        // 如果未啟用自動下班打卡，則不處理
+        if (!autoClockOutSettings.enabled) {
+            console.log('自動下班打卡未啟用，跳過超時檢查');
+            return;
+        }
+        
+        // 獲取用戶當前狀態
+        const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+        if (!userDoc.exists) {
+            console.log('用戶資料不存在');
+            return;
+        }
+        
+        const userData = userDoc.data();
+        const currentStatus = userData.clockInStatus;
+        const lastClockInTime = userData.lastClockInTime;
+        
+        // 只處理上班狀態的用戶
+        if (currentStatus !== '上班' || !lastClockInTime) {
+            console.log(`當前狀態：${currentStatus}，不需要檢查超時`);
+            return;
+        }
+        
+        // 計算上班時間
+        const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
+        const now = new Date();
+        const workingHours = (now - clockInTime) / (1000 * 60 * 60); // 轉換為小時
+        
+        console.log(`用戶已工作 ${workingHours.toFixed(2)} 小時，設定工作時數：${autoClockOutSettings.workHours} 小時`);
+        
+        // 如果已超過設定的工作時數，執行自動下班打卡
+        if (workingHours >= autoClockOutSettings.workHours) {
+            console.log('檢測到超時上班，執行自動下班打卡');
+            await performAutoClockOut();
+        } else {
+            // 如果還沒超時，計算剩餘時間並啟動計時器
+            const remainingHours = autoClockOutSettings.workHours - workingHours;
+            const remainingMs = remainingHours * 60 * 60 * 1000;
+            
+            console.log(`距離自動下班還有 ${remainingHours.toFixed(2)} 小時，啟動計時器`);
+            
+            // 清除現有計時器
+            if (autoClockOutTimer) {
+                clearTimeout(autoClockOutTimer);
+            }
+            
+            // 設定新的計時器
+            autoClockOutTimer = setTimeout(async () => {
+                try {
+                    await performAutoClockOut();
+                } catch (error) {
+                    console.error('自動下班打卡失敗:', error);
+                }
+            }, remainingMs);
+        }
+        
+    } catch (error) {
+        console.error('檢查超時狀態失敗:', error);
+    }
+}
+
+// 檢查所有用戶的超時狀態（管理員功能）
+async function checkAllUsersOvertimeStatus() {
+    try {
+        // 載入自動下班打卡設定
+        await loadAutoClockOutSettings();
+        
+        if (!autoClockOutSettings.enabled) {
+            console.log('自動下班打卡未啟用，跳過全員超時檢查');
+            return;
+        }
+        
+        // 獲取所有用戶
+        const usersSnapshot = await firebase.firestore().collection('users').get();
+        const overtimeUsers = [];
+        
+        usersSnapshot.forEach(doc => {
+            const userData = doc.data();
+            const userId = doc.id;
+            const currentStatus = userData.clockInStatus;
+            const lastClockInTime = userData.lastClockInTime;
+            
+            // 只檢查上班狀態的用戶
+            if (currentStatus === '上班' && lastClockInTime) {
+                const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
+                const now = new Date();
+                const workingHours = (now - clockInTime) / (1000 * 60 * 60);
+                
+                if (workingHours >= autoClockOutSettings.workHours) {
+                    overtimeUsers.push({
+                        userId,
+                        displayName: userData.displayName || userData.email || userId,
+                        workingHours: workingHours.toFixed(2),
+                        clockInTime: clockInTime
+                    });
+                }
+            }
+        });
+        
+        if (overtimeUsers.length > 0) {
+            console.log(`發現 ${overtimeUsers.length} 位用戶超時：`, overtimeUsers);
+            
+            // 可以選擇是否自動為所有超時用戶執行下班打卡
+            // 這裡先只記錄，不自動執行，避免意外操作
+            showToast(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`, true);
+        } else {
+            console.log('沒有發現超時的用戶');
+        }
+        
+        return overtimeUsers;
+        
+    } catch (error) {
+        console.error('檢查全員超時狀態失敗:', error);
+        return [];
     }
 }
 
