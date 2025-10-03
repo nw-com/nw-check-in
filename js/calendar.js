@@ -3,9 +3,9 @@ function renderCalendar(subPage) {
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
         <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
-            <button data-subtab="overview" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'overview' ? 'active' : ''}">總覽</button>
-            <button data-subtab="schedule" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'schedule' ? 'active' : ''}">行程表</button>
-            <button data-subtab="notifications" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'notifications' ? 'active' : ''}">訊息通知</button>
+            <button data-subtab="overview" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors hover:bg-gray-100 ${subPage === 'overview' ? 'bg-red-100 text-red-600 active' : 'text-gray-600'}">總覽</button>
+            <button data-subtab="schedule" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors hover:bg-gray-100 ${subPage === 'schedule' ? 'bg-red-100 text-red-600 active' : 'text-gray-600'}">行程表</button>
+            <button data-subtab="notifications" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors hover:bg-gray-100 ${subPage === 'notifications' ? 'bg-red-100 text-red-600 active' : 'text-gray-600'}">訊息通知</button>
         </div>
         <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
     
@@ -18,15 +18,34 @@ function renderCalendar(subPage) {
         renderCalendarNotifications(subPageContent);
     }
     
-    mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (typeof showPage === 'function') {
-                showPage('calendar', btn.dataset.subtab);
-            } else {
-                console.error('showPage function is not defined');
-            }
+    // 添加子分頁切換事件監聽器
+    setTimeout(() => {
+        mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const subtab = btn.dataset.subtab;
+                console.log('Switching to subtab:', subtab);
+                
+                // 更新按鈕狀態
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(b => {
+                    b.classList.remove('active', 'bg-red-100', 'text-red-600');
+                    b.classList.add('text-gray-600');
+                });
+                btn.classList.remove('text-gray-600');
+                btn.classList.add('active', 'bg-red-100', 'text-red-600');
+                
+                // 渲染對應的子分頁內容
+                const subPageContent = document.getElementById('sub-page-content');
+                if (subtab === 'overview') {
+                    renderCalendarOverview(subPageContent);
+                } else if (subtab === 'schedule') {
+                    renderCalendarSchedule(subPageContent);
+                } else if (subtab === 'notifications') {
+                    renderCalendarNotifications(subPageContent);
+                }
+            });
         });
-    });
+    }, 100);
 }
 
 // 總覽子分頁 - 月曆表格
