@@ -4677,10 +4677,38 @@
                 popup.className = 'user-popup fixed bg-white rounded-lg shadow-lg p-3 z-50';
                 popup.style.width = '200px';
                 
-                // 計算位置 (在名稱下方)
+                // 計算位置 (在名稱下方) 並避免超出視窗邊界
                 const rect = nameBtn.getBoundingClientRect();
-                popup.style.left = `${rect.left}px`;
-                popup.style.top = `${rect.bottom + 5}px`;
+                const popupWidth = 200; // 與 CSS 寬度一致
+                const margin = 10; // 與邊界保持距離
+                let left = rect.left;
+                let top = rect.bottom + 5;
+
+                // 右側邊界檢查
+                if (left + popupWidth > window.innerWidth - margin) {
+                    left = Math.max(margin, window.innerWidth - popupWidth - margin);
+                }
+                // 左側邊界檢查
+                if (left < margin) {
+                    left = margin;
+                }
+
+                // 預估高度並做下邊界檢查；若超出則顯示在名稱上方
+                const estimatedHeight = 120; // 內容高度估算
+                if (top + estimatedHeight > window.innerHeight - margin) {
+                    top = rect.top - estimatedHeight - 5;
+                }
+                // 上側邊界檢查
+                if (top < margin) {
+                    top = margin;
+                }
+
+                popup.style.left = `${left}px`;
+                popup.style.top = `${top}px`;
+                // 動態限制高度並允許捲動
+                const availableHeight = window.innerHeight - top - margin;
+                popup.style.maxHeight = `${Math.max(80, availableHeight)}px`;
+                popup.style.overflow = 'auto';
                 
                 // 添加按鈕 (只保留撥打電話按鈕)
                 popup.innerHTML = `
