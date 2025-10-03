@@ -3974,8 +3974,13 @@
                                     <img id="modal-avatar" src="${state.currentUserData.avatarUrl || `https://placehold.co/80x80/EFEFEF/333333?text=${state.currentUserData.name.charAt(0)}`}" alt="Avatar" class="w-20 h-20 rounded-full object-cover">
                                     <label for="avatar-upload" class="cursor-pointer text-blue-600 hover:text-blue-800">
                                         更換頭像
-                                        <input type="file" id="avatar-upload" accept="image/*" class="hidden">
+                                        <input type="file" id="avatar-upload" accept="image/*" capture="environment" class="hidden">
                                     </label>
+                                    <div id="avatar-dropzone" class="w-full mt-2 p-3 border-2 border-dashed rounded-md text-sm text-gray-600 text-center">拖曳圖片到此，或在此按 Ctrl+V 貼上圖片</div>
+                                    <div class="w-full flex items-center gap-2 text-sm mt-1">
+                                        <input id="avatar-url" type="url" placeholder="貼上圖片網址 (http/https)" class="flex-1 border rounded px-2 py-1">
+                                        <button id="avatar-url-btn" class="px-3 py-1 bg-blue-600 text-white rounded">從網址匯入</button>
+                                    </div>
                                 </div>
 
                                 <!-- Info -->
@@ -3989,24 +3994,10 @@
                                     <h4 class="font-semibold mb-2">獎懲點數</h4>
                                     <p class="text-center text-3xl font-bold">${state.currentUserData.points || 0} 點</p>
                                 </div>
-                                
-                                <!-- 請假資訊 -->
-                                <div class="border-t pt-4">
-                                    <h4 class="font-semibold mb-2">請假資訊</h4>
-                                    <div id="leave-status" class="p-3 rounded-lg text-center ${state.currentUserData.clockInStatus === '臨時請假' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}">
-                                        ${renderLeaveInfo(state.currentUserData)}
-                                    </div>
-                                </div>
-
-                                <!-- 打卡時間 -->
-                                <div class="border-t pt-4">
-                                    <h4 class="font-semibold mb-2">打卡時間</h4>
-                                    <div id="clock-in-times" class="p-3 rounded-lg bg-gray-50 text-gray-700">載入中...</div>
-                                </div>
 
                                 <!-- 未來請假 -->
                                 <div class="border-t pt-4">
-                                    <h4 class="font-semibold mb-2">未來請假</h4>
+                                    <h4 class="font-semibold mb-2">請假申請</h4>
                                     <div id="future-leaves" class="space-y-2"></div>
                                 </div>
                             </div>
@@ -4042,41 +4033,77 @@
                     }
                 });
 
-                avatarUploadInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
+                async function processAndUploadAvatar(file) {
                     if (!file) return;
-
                     showLoading(true);
                     try {
-                        // 壓縮圖片
                         const compressedFile = await compressImage(file, 300);
-                        
-                        // 使用當前時間戳作為文件名，避免緩存問題
                         const timestamp = new Date().getTime();
                         const fileName = `avatar_${timestamp}.jpg`;
                         const storageRef = ref(storage, `avatars/${state.currentUser.uid}/${fileName}`);
-                        
-                        // 上傳壓縮後的圖片
                         await uploadBytes(storageRef, compressedFile);
                         const downloadURL = await getDownloadURL(storageRef);
-                        
-                        // 更新用戶文檔
-                        await updateDoc(doc(db, "users", state.currentUser.uid), { 
-                            avatarUrl: downloadURL 
-                        });
-                        
-                        // 更新當前用戶數據
+                        await updateDoc(doc(db, "users", state.currentUser.uid), { avatarUrl: downloadURL });
                         state.currentUserData.avatarUrl = downloadURL;
-                        
-                        // 更新界面 - 添加時間戳以避免緩存問題
                         const cachedUrl = `${downloadURL}?t=${timestamp}`;
                         document.getElementById('modal-avatar').src = cachedUrl;
                         document.getElementById('header-avatar').src = cachedUrl;
-                        
                         showToast("頭像更新成功");
                     } catch (error) {
                         console.error("Avatar upload error:", error);
                         showToast("頭像上傳失敗: " + error.message, true);
+                    } finally {
+                        showLoading(false);
+                    }
+                }
+
+                avatarUploadInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    await processAndUploadAvatar(file);
+                });
+
+                // 允許拖曳上傳
+                const dropzone = document.getElementById('avatar-dropzone');
+                dropzone.addEventListener('dragover', (ev) => { ev.preventDefault(); dropzone.classList.add('bg-gray-50'); });
+                dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('bg-gray-50'); });
+                dropzone.addEventListener('drop', async (ev) => {
+                    ev.preventDefault();
+                    dropzone.classList.remove('bg-gray-50');
+                    const file = ev.dataTransfer?.files?.[0] || null;
+                    if (file) await processAndUploadAvatar(file);
+                });
+
+                // 支援貼上圖片（Ctrl+V）
+                modal.addEventListener('paste', async (ev) => {
+                    const items = ev.clipboardData?.items || [];
+                    for (const item of items) {
+                        if (item.type && item.type.startsWith('image')) {
+                            const blob = item.getAsFile();
+                            if (blob) {
+                                const file = new File([blob], `avatar_paste_${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+                                await processAndUploadAvatar(file);
+                                break;
+                            }
+                        }
+                    }
+                });
+
+                // 從網址匯入圖片
+                document.getElementById('avatar-url-btn').addEventListener('click', async () => {
+                    const url = document.getElementById('avatar-url').value.trim();
+                    if (!url || !(url.startsWith('http://') || url.startsWith('https://'))) {
+                        showToast('請輸入有效的圖片網址', true);
+                        return;
+                    }
+                    try {
+                        showLoading(true);
+                        const res = await fetch(url);
+                        const blob = await res.blob();
+                        const file = new File([blob], `avatar_url_${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+                        await processAndUploadAvatar(file);
+                    } catch (err) {
+                        console.error('Avatar URL import error:', err);
+                        showToast('網址匯入失敗', true);
                     } finally {
                         showLoading(false);
                     }
@@ -4122,58 +4149,7 @@
                     showToast("您已成功登出");
                 });
 
-                // 載入打卡時間資訊
-                (async function loadClockInTimes() {
-                    const container = document.getElementById('clock-in-times');
-                    if (!container) return;
-                    try {
-                        const uid = state.currentUser?.uid;
-                        if (!uid) {
-                            container.innerHTML = '<div class="text-sm text-red-600">請先登入</div>';
-                            return;
-                        }
-                        const userSnap = await getDoc(doc(db, "users", uid));
-                        const data = userSnap.exists() ? userSnap.data() : (state.currentUserData || {});
-                        const statusText = data.clockInStatus || '未知';
-                        // 避免索引需求：僅使用 userId 條件，於前端挑選最新紀錄
-                        const qAll = query(
-                            collection(db, 'clockInRecords'),
-                            where('userId', '==', uid)
-                        );
-                        const allSnap = await getDocs(qAll);
-                        const allRecords = allSnap.docs.map(d => d.data());
-                        const ts = r => (r?.timestamp?.toDate ? r.timestamp.toDate() : (r?.timestamp ? new Date(r.timestamp) : null));
-                        const latestOfType = (type) => (
-                            allRecords
-                                .filter(r => r.type === type && ts(r))
-                                .sort((a,b) => ts(b) - ts(a))[0] || null
-                        );
-                        const latestIn = latestOfType('上班');
-                        const latestOutManual = latestOfType('下班');
-                        const latestOutAuto = latestOfType('自動下班');
-                        let latestOut = null;
-                        if (latestOutManual && latestOutAuto) {
-                            const tManual = ts(latestOutManual);
-                            const tAuto = ts(latestOutAuto);
-                            latestOut = tManual > tAuto ? latestOutManual : latestOutAuto;
-                        } else {
-                            latestOut = latestOutManual || latestOutAuto;
-                        }
-
-                        const inText = latestIn ? formatDateTime(latestIn.timestamp) : 'N/A';
-                        const outText = latestOut ? formatDateTime(latestOut.timestamp) + (latestOut.type === '自動下班' ? '（自動）' : '') : 'N/A';
-
-                        container.innerHTML = `
-                            <div class="text-sm">目前狀態：${statusText}</div>
-                            <div class="text-sm">上班時間：${inText} / 下班時間：${outText}</div>
-                        `;
-                    } catch (e) {
-                        console.error('載入打卡時間失敗:', e);
-                        container.innerHTML = '<div class="text-sm text-red-600">載入打卡時間失敗</div>';
-                    }
-                })();
-
-                // 載入未來請假清單
+                // 載入請假申請清單
                 (async function loadFutureLeaves() {
                     const container = document.getElementById('future-leaves');
                     if (!container) return;
@@ -4198,7 +4174,7 @@
                             }
                         });
                         if (future.length === 0) {
-                            container.innerHTML = '<div class="text-sm text-gray-500">沒有未來請假</div>';
+                            container.innerHTML = '<div class="text-sm text-gray-500">沒有請假申請</div>';
                             return;
                         }
                         future.sort((a, b) => (a.startTime.toDate ? a.startTime.toDate() : new Date(a.startTime)) - (b.startTime.toDate ? b.startTime.toDate() : new Date(b.startTime)));
@@ -4219,8 +4195,8 @@
                             </div>
                         `).join('');
                     } catch (e) {
-                        console.error('載入未來請假失敗:', e);
-                        container.innerHTML = '<div class="text-sm text-red-600">載入未來請假失敗</div>';
+                        console.error('載入請假申請失敗:', e);
+                        container.innerHTML = '<div class="text-sm text-red-600">載入請假申請失敗</div>';
                     }
                 })();
             }
