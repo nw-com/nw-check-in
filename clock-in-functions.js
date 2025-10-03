@@ -1205,7 +1205,11 @@ async function checkAllUsersOvertimeStatus() {
             
             // 可以選擇是否自動為所有超時用戶執行下班打卡
             // 這裡先只記錄，不自動執行，避免意外操作
-            showToast(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`, true);
+            if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+                window.showToast(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`, true);
+            } else {
+                alert(`發現 ${overtimeUsers.length} 位同事工作超時，請提醒他們下班打卡`);
+            }
         } else {
             console.log('沒有發現超時的用戶');
         }

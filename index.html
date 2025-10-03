@@ -2382,11 +2382,11 @@
                                  const nineHoursAgo = new Date();
                                  nineHoursAgo.setHours(nineHoursAgo.getHours() - 9);
                                  
-                                 await setDoc(doc(db, 'users', user.uid), {
-                                     clockInStatus: '上班',
-                                     lastClockInTime: firebase.firestore.Timestamp.fromDate(nineHoursAgo),
-                                     lastLocation: '測試-辦公室'
-                                 }, { merge: true });
+                                  await firebase.firestore().collection('users').doc(user.uid).set({
+                                      clockInStatus: '上班',
+                                      lastClockInTime: firebase.firestore.Timestamp.fromDate(nineHoursAgo),
+                                      lastLocation: '測試-辦公室'
+                                  }, { merge: true });
                                  
                                  showToast('已設定測試超時狀態（9小時前上班），請重新載入頁面測試自動下班打卡功能');
                                  
