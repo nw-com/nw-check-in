@@ -294,26 +294,46 @@ function updateButtonStatus() {
             cycleBtn.classList.add(bgClass);
         }
     };
+
+    // 上班/下班單一切換按鈕動態設定器
+    const setWorkToggleButton = (nextType, label, bgClass) => {
+        const toggleBtn = document.getElementById('work-toggle-btn');
+        if (!toggleBtn) return;
+        toggleBtn.dataset.type = nextType;
+        toggleBtn.textContent = label;
+        toggleBtn.disabled = false;
+        toggleBtn.classList.remove('bg-gray-300', 'cursor-not-allowed', 'disabled',
+                                   'bg-green-500', 'hover:bg-green-600',
+                                   'bg-red-500', 'hover:bg-red-600');
+        if (bgClass) {
+            toggleBtn.classList.add(bgClass);
+            // 加上對應 hover 類
+            if (bgClass === 'bg-green-500') {
+                toggleBtn.classList.add('hover:bg-green-600');
+            } else if (bgClass === 'bg-red-500') {
+                toggleBtn.classList.add('hover:bg-red-600');
+            }
+        }
+    };
     
     // 根據當前狀態啟用相應按鈕
     switch(state.clockInStatus) {
         case 'none':
-            // 尚未打卡，只啟用上班按鈕
-            enableButton('上班', 'bg-green-500');
+            // 尚未打卡，只啟用上班（切換按鈕設為上班）
+            setWorkToggleButton('上班', '上班打卡', 'bg-green-500');
             break;
         case '上班':
-            // 已上班，啟用下班與循環按鈕（下一步：外出）
-            enableButton('下班', 'bg-red-500');
+            // 已上班，切換按鈕設為下班；循環按鈕（下一步：外出）
+            setWorkToggleButton('下班', '下班打卡', 'bg-red-500');
             setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             break;
         case '下班':
-            // 已下班，只啟用上班按鈕
-            enableButton('上班', 'bg-green-500');
+            // 已下班，切換按鈕回到上班
+            setWorkToggleButton('上班', '上班打卡', 'bg-green-500');
             break;
         case '已下班-未打卡':
-            // 已下班但未打卡，啟用上班和下班按鈕
-            enableButton('上班', 'bg-green-500');
-            enableButton('下班', 'bg-red-500');
+            // 已下班但未打卡，預設提供下班（亦可在頁面重新載入後選擇上班）
+            setWorkToggleButton('下班', '下班打卡', 'bg-red-500');
             break;
         case '外出':
             // 外出中，循環按鈕切換至「抵達」
@@ -322,7 +342,7 @@ function updateButtonStatus() {
         case '抵達':
             // 已抵達，循環按鈕切換至「離開」，同時可下班
             setOutboundCycleButton('離開', '離開打卡', 'bg-red-700');
-            enableButton('下班', 'bg-red-500');
+            setWorkToggleButton('下班', '下班打卡', 'bg-red-500');
             break;
         case '離開':
             // 已離開，循環按鈕切換至「返回」
@@ -330,7 +350,7 @@ function updateButtonStatus() {
             break;
         case '返回':
             // 已返回，循環按鈕回到「外出」，同時可下班
-            enableButton('下班', 'bg-red-500');
+            setWorkToggleButton('下班', '下班打卡', 'bg-red-500');
             setOutboundCycleButton('外出', '外出打卡', 'bg-blue-500');
             break;
         case '臨時請假':
@@ -340,9 +360,9 @@ function updateButtonStatus() {
             // 特殊勤務中，不啟用其他按鈕
             break;
         default:
-            // 未知狀態，只啟用上班按鈕
-            enableButton('上班', 'bg-green-500', 'hover:bg-green-600');
-    }
+            // 未知狀態，切換按鈕設為上班
+            setWorkToggleButton('上班', '上班打卡', 'bg-green-500');
+}
     
     // 更新狀態顯示
     updateStatusDisplay();
