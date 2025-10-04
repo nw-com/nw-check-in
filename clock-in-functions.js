@@ -5,6 +5,28 @@ if (typeof state === 'undefined') {
     window.state = {};
 }
 
+// 建立 showToast 本地別名並全域掛載（避免模組作用域下未解析）
+const showToast = (typeof window.showToast === 'function')
+    ? window.showToast
+    : function(message, isError = false) {
+        try {
+            const toast = document.getElementById('toast');
+            if (!toast) {
+                console.log('[Toast]', message);
+                return;
+            }
+            toast.textContent = message;
+            toast.className = `toast show ${isError ? 'bg-red-500' : 'bg-gray-800'}`;
+            setTimeout(() => {
+                toast.className = 'toast';
+            }, 3000);
+        } catch (e) {
+            console.log('[Toast]', message);
+        }
+    };
+// 確保全域亦可使用
+window.showToast = showToast;
+
 // 設置打卡狀態屬性
 if (typeof state.clockInStatus === 'undefined') {
     state.clockInStatus = 'none';
@@ -247,9 +269,12 @@ function initClockInButtonStatus() {
         
     }).catch(error => {
         console.error("獲取用戶狀態失敗:", error);
-        showToast("獲取用戶狀態失敗，請重新整理頁面", true);
-        // 出錯時至少啟用上班打卡按鈕
+        // 離線容錯：給預設狀態，允許上班打卡
+        state.clockInStatus = 'none';
+        state.outboundLocation = null;
         enableOnlyButton('上班');
+        updateStatusDisplay();
+        showToast("目前離線，僅提供上班打卡；恢復連線後會自動同步", true);
     });
 }
 

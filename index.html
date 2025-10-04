@@ -40,6 +40,18 @@
         // 獲取 Firestore 實例
         const db = firebase.firestore();
         const auth = firebase.auth();
+        // 啟用 v8 Firestore 離線持久化
+        if (db && typeof db.enablePersistence === 'function') {
+          db.enablePersistence({ synchronizeTabs: true }).catch(function(err) {
+            if (err && err.code === 'failed-precondition') {
+              console.log('無法啟用離線持久化：偵測到多個分頁同時使用');
+            } else if (err && err.code === 'unimplemented') {
+              console.log('瀏覽器不支援離線持久化功能');
+            } else {
+              console.log('啟用離線持久化發生錯誤：', err);
+            }
+          });
+        }
         
         // Google Maps API Key
         const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtbrary_Jw5zOzyjOqq3CM0VYrDw";
@@ -1287,11 +1299,12 @@
                                     }
                                     document.body.removeChild(backdrop);
                                     document.body.removeChild(modal);
-                                    // 打開相機，傳遞當前位置和外出地點名稱
-                                    if (state.currentLocation) {
+                                    // 打開相機，傳遞當前位置和外出地點名稱；若定位失敗則使用後備座標
+                                    if (state.currentLocation && typeof state.currentLocation.lat === 'number' && typeof state.currentLocation.lng === 'number') {
                                         openCameraModal(type, { ...state.currentLocation, name: locationText });
                                     } else {
-                                        alert('無法獲取當前位置，請確保已開啟定位服務');
+                                        showToast('定位逾時，將以未知位置繼續打卡（稍後可同步）');
+                                        openCameraModal(type, { lat: 0, lng: 0, name: locationText, isFallback: true });
                                     }
                                 } else {
                                     alert('請輸入外出地點');
@@ -4770,21 +4783,28 @@
                         });
 
                         const uploadedPhotos = await Promise.all(photoPromises);
-                        const photoUrls = uploadedPhotos.map(p => p.url);
-                        const descriptions = uploadedPhotos.map(p => p.description);
+                        // Firestore 規則：最多 3 張照片，描述數量需一致
+                        const limitedPhotos = uploadedPhotos.slice(0, 3);
+                        const photoUrls = limitedPhotos.map(p => p.url);
+                        const descriptions = limitedPhotos.map(p => p.description);
+
+                        // 安全座標處理：若缺少或為後備，使用 (0,0)
+                        const safeLat = (location && typeof location.lat === 'number') ? location.lat : 0;
+                        const safeLng = (location && typeof location.lng === 'number') ? location.lng : 0;
 
                         const recordData = {
                             userId: state.currentUser.uid,
                             type: type,
                             timestamp: serverTimestamp(),
-                            location: new GeoPoint(location.lat, location.lng),
+                            location: new GeoPoint(safeLat, safeLng),
                             photoUrls,
                             descriptions,
-                            // 勤務項目（僅外出時可能存在）
-                            // 若無則不影響規則驗證
-                            dutyType: (type === '外出' && state.dutyType) ? state.dutyType : undefined,
                             deviceId: state.deviceId || 'unknown-device'
                         };
+                        // 勤務項目（僅外出時可能存在）：避免 undefined 寫入
+                        if (type === '外出' && state.dutyType) {
+                            recordData.dutyType = state.dutyType;
+                        }
                         
                         // 如果是外出打卡，添加地點名稱
                         if (type === '外出' && location.name) {
@@ -4809,7 +4829,7 @@
                             status: type,
                             clockInStatus: type,  // 添加 clockInStatus 欄位
                             lastClockInTime: serverTimestamp(),
-                            lastLocation: new GeoPoint(location.lat, location.lng)
+                            lastLocation: new GeoPoint(safeLat, safeLng)
                         };
                         
                         // 如果是外出打卡，添加外出地點名稱
@@ -4962,6 +4982,8 @@
                     toast.className = 'toast';
                 }, 3000);
             }
+            // 使全域可用，以供其他腳本呼叫
+            window.showToast = showToast;
 
             function timeAgo(date) {
                 const seconds = Math.floor((new Date() - date) / 1000);
