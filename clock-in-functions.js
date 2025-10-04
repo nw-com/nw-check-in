@@ -1157,8 +1157,7 @@ async function performAutoClockOut() {
         const userUpdateData = {
             status: '已下班-未打卡',
             clockInStatus: '已下班-未打卡',
-            lastClockInTime: firebase.firestore.FieldValue.serverTimestamp(),
-            autoClockOutTime: firebase.firestore.FieldValue.serverTimestamp()
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         };
         
         await firebase.firestore().collection('users').doc(user.uid).update(userUpdateData);
@@ -1337,7 +1336,7 @@ async function checkAllUsersOvertimeStatus() {
                     await userRef.update({
                         status: '已下班-未打卡',
                         clockInStatus: '已下班-未打卡',
-                        autoClockOutTime: firebase.firestore.FieldValue.serverTimestamp()
+                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 } catch (err) {
                     console.error(`自動下班處理失敗（${ou.userId}）:`, err);

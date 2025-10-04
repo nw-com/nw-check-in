@@ -4827,9 +4827,8 @@
 
                         const userUpdateData = {
                             status: type,
-                            clockInStatus: type,  // 添加 clockInStatus 欄位
-                            lastClockInTime: serverTimestamp(),
-                            lastLocation: new GeoPoint(safeLat, safeLng)
+                            clockInStatus: type,
+                            lastUpdated: serverTimestamp()
                         };
                         
                         // 如果是外出打卡，添加外出地點名稱
