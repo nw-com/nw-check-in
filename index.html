@@ -4799,6 +4799,14 @@
                     showLoading(true);
 
                     try {
+                        // 僅允許安全規則中的打卡類型
+                        const allowedTypes = ['上班','下班','外出','返回','抵達','離開','自動下班'];
+                        if (!allowedTypes.includes(type)) {
+                            console.warn('不允許的打卡類型，已取消寫入：', type);
+                            showToast('此打卡類型不支援紀錄寫入，請改用對應功能', true);
+                            return;
+                        }
+
                         // 將照片轉換為 Data URL 並儲存（恢復原行為）
                         const photoPromises = capturedPhotos.map(async (photo) => {
                             return new Promise((resolve) => {
@@ -4824,8 +4832,12 @@
                         const safeLat = (location && typeof location.lat === 'number') ? location.lat : 0;
                         const safeLng = (location && typeof location.lng === 'number') ? location.lng : 0;
 
+                        const uid = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                        if (!uid) {
+                            throw new Error('未登入或找不到使用者，無法寫入打卡記錄');
+                        }
                         const recordData = {
-                            userId: state.currentUser.uid,
+                            userId: uid,
                             type: type,
                             timestamp: Timestamp.now(),
                             location: new GeoPoint(safeLat, safeLng),
@@ -4839,20 +4851,24 @@
                         }
                         
                         // 如果是外出打卡，添加地點名稱
-                        if (type === '外出' && location.name) {
-                            recordData.locationName = location.name;
+                        if (type === '外出') {
+                            const locName = typeof location.name === 'string' ? location.name : '';
+                            if (locName) {
+                                recordData.locationName = locName.slice(0, 100);
+                            }
                         }
                         
                         try {
                             await addDoc(collection(db, "clockInRecords"), recordData);
                         } catch (e) {
-                            console.error('新增 clockInRecords 失敗：', e?.code, e?.message || e);
+                            console.error('新增 clockInRecords 失敗：', e?.code, e?.message || e, { keys: Object.keys(recordData), type: recordData.type, locationIsGeoPoint: recordData.location instanceof GeoPoint, photosLen: recordData.photoUrls.length, descLen: recordData.descriptions.length });
                             throw e;
                         }
 
                         // 首次打卡裝置ID寫入：僅當使用者尚未有 firstClockInDeviceId
                         try {
-                            const userRef = doc(db, "users", state.currentUser.uid);
+                            const uid3 = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                            const userRef = doc(db, "users", uid3);
                             const userSnap = await getDoc(userRef);
                             const hasFirst = userSnap.exists() && userSnap.data().firstClockInDeviceId;
                             if (!hasFirst && type === '上班') {
@@ -4869,8 +4885,11 @@
                         };
                         
                         // 如果是外出打卡，添加外出地點名稱
-                        if (type === '外出' && location.name) {
-                            userUpdateData.outboundLocation = location.name;
+                        if (type === '外出') {
+                            const locName2 = typeof location.name === 'string' ? location.name : '';
+                            if (locName2) {
+                                userUpdateData.outboundLocation = locName2.slice(0, 100);
+                            }
                         }
                         // 外出時同步寫入勤務項目（若有）
                         if (type === '外出' && state.dutyType) {
@@ -4878,9 +4897,10 @@
                         }
                         
                         try {
-                            await updateDoc(doc(db, "users", state.currentUser.uid), userUpdateData);
+                            const uid2 = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                            await updateDoc(doc(db, "users", uid2), userUpdateData);
                         } catch (e) {
-                            console.error('更新 users 狀態失敗：', e?.code, e?.message || e, userUpdateData);
+                            console.error('更新 users 狀態失敗：', e?.code, e?.message || e, { keys: Object.keys(userUpdateData) });
                             throw e;
                         }
 
