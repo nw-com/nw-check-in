@@ -1261,10 +1261,19 @@
                                             if (state.savedLocations.length > 10) {
                                                 state.savedLocations.shift();
                                             }
-                                            if (firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
+                                            // 僅管理員可寫入 Firestore；一般使用者改存 localStorage
+                                            const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
+                                            if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
                                                 firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
                                                     savedLocations: state.savedLocations
                                                 }).catch(err => console.warn('保存地址到設定失敗', err));
+                                            } else {
+                                                try {
+                                                    const key = `saved_locations_${firebase.auth().currentUser.uid}`;
+                                                    localStorage.setItem(key, JSON.stringify(state.savedLocations));
+                                                } catch (e) {
+                                                    console.warn('保存地址到本機失敗', e);
+                                                }
                                             }
                                         }
                                     } catch (e) {
@@ -1272,7 +1281,8 @@
                                     }
                                     // 保存外出地點到系統位置設定（otherLocations），僅管理員具有寫入權限
                                     try {
-                                        if (firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
+                                        const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
+                                        if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
                                             const settingsRef = firebase.firestore().collection('settings').doc('location');
                                             // 構建位置物件
                                             const locEntry = {
@@ -1913,10 +1923,20 @@
                                 state.savedLocations.shift();
                             }
                             
-                            // 保存到用戶設定
-                            await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
-                                savedLocations: state.savedLocations
-                            });
+                            // 僅管理員可寫入 Firestore；一般使用者改存 localStorage
+                            const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
+                            if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
+                                await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                                    savedLocations: state.savedLocations
+                                });
+                            } else {
+                                try {
+                                    const key = `saved_locations_${firebase.auth().currentUser.uid}`;
+                                    localStorage.setItem(key, JSON.stringify(state.savedLocations));
+                                } catch (e) {
+                                    console.warn('保存地址到本機失敗', e);
+                                }
+                            }
                         }
                         
                         showToast('特殊勤務已登記');
@@ -3463,15 +3483,26 @@
                                  btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i>測試中...';
                                  btn.disabled = true;
                                  
-                                 // 模擬超時情況：將當前用戶的上班時間設為9小時前
+                                 // 模擬超時情況：建立一筆「9小時前上班」的合規打卡紀錄
                                  const nineHoursAgo = new Date();
                                  nineHoursAgo.setHours(nineHoursAgo.getHours() - 9);
-                                 
-                                  await firebase.firestore().collection('users').doc(user.uid).set({
-                                      clockInStatus: '上班',
-                                      lastClockInTime: firebase.firestore.Timestamp.fromDate(nineHoursAgo),
-                                      lastLocation: '測試-辦公室'
-                                  }, { merge: true });
+                                 const ts = firebase.firestore.Timestamp.fromDate(nineHoursAgo);
+                                 const loc = new firebase.firestore.GeoPoint(25.0330, 121.5654);
+                                 await firebase.firestore().collection('clockInRecords').add({
+                                     userId: user.uid,
+                                     type: '上班',
+                                     timestamp: ts,
+                                     location: loc,
+                                     photoUrls: [],
+                                     descriptions: [],
+                                     deviceId: 'test-device'
+                                 });
+                                 // 將使用者狀態設為上班（僅更新允許欄位）
+                                 await firebase.firestore().collection('users').doc(user.uid).set({
+                                     clockInStatus: '上班',
+                                     status: '上班',
+                                     lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                                 }, { merge: true });
                                  
                                  showToast('已設定測試超時狀態（9小時前上班），請重新載入頁面測試自動下班打卡功能');
                                  
@@ -4786,7 +4817,8 @@
                         // Firestore 規則：最多 3 張照片，描述數量需一致
                         const limitedPhotos = uploadedPhotos.slice(0, 3);
                         const photoUrls = limitedPhotos.map(p => p.url);
-                        const descriptions = limitedPhotos.map(p => p.description);
+                        // Firestore 不允許 undefined：將非字串說明轉為空字串
+                        const descriptions = limitedPhotos.map(p => (typeof p.description === 'string' ? p.description : ''));
 
                         // 安全座標處理：若缺少或為後備，使用 (0,0)
                         const safeLat = (location && typeof location.lat === 'number') ? location.lat : 0;
@@ -4795,7 +4827,7 @@
                         const recordData = {
                             userId: state.currentUser.uid,
                             type: type,
-                            timestamp: serverTimestamp(),
+                            timestamp: Timestamp.now(),
                             location: new GeoPoint(safeLat, safeLng),
                             photoUrls,
                             descriptions,
@@ -4811,7 +4843,12 @@
                             recordData.locationName = location.name;
                         }
                         
-                        await addDoc(collection(db, "clockInRecords"), recordData);
+                        try {
+                            await addDoc(collection(db, "clockInRecords"), recordData);
+                        } catch (e) {
+                            console.error('新增 clockInRecords 失敗：', e?.code, e?.message || e);
+                            throw e;
+                        }
 
                         // 首次打卡裝置ID寫入：僅當使用者尚未有 firstClockInDeviceId
                         try {
@@ -4828,7 +4865,7 @@
                         const userUpdateData = {
                             status: type,
                             clockInStatus: type,
-                            lastUpdated: serverTimestamp()
+                            lastUpdated: Timestamp.now()
                         };
                         
                         // 如果是外出打卡，添加外出地點名稱
@@ -4840,7 +4877,12 @@
                             userUpdateData.dutyType = state.dutyType;
                         }
                         
-                        await updateDoc(doc(db, "users", state.currentUser.uid), userUpdateData);
+                        try {
+                            await updateDoc(doc(db, "users", state.currentUser.uid), userUpdateData);
+                        } catch (e) {
+                            console.error('更新 users 狀態失敗：', e?.code, e?.message || e, userUpdateData);
+                            throw e;
+                        }
 
                         // 更新本地狀態
                         state.clockInStatus = type;

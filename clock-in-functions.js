@@ -1131,24 +1131,33 @@ async function performAutoClockOut() {
             return;
         }
         
-        // 獲取最後的位置信息
-        const lastLocation = userDoc.data().lastLocation;
-        if (!lastLocation) {
-            console.error('無法獲取最後位置，自動下班打卡失敗');
-            return;
+        // 安全地獲取位置：優先取當前定位，其次使用預設 (0,0)
+        let location = null;
+        let locationName = null;
+        const hasCurrentLocation = window.state && window.state.currentLocation &&
+            typeof window.state.currentLocation.lat === 'number' &&
+            typeof window.state.currentLocation.lng === 'number';
+        if (hasCurrentLocation) {
+            location = new firebase.firestore.GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
+        } else {
+            location = new firebase.firestore.GeoPoint(0, 0);
+            locationName = '系統自動-未知位置';
         }
         
         // 創建自動下班打卡記錄
         const recordData = {
             userId: user.uid,
             type: '自動下班',
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            location: lastLocation,
+            timestamp: firebase.firestore.Timestamp.now(),
+            location: location,
             photoUrls: [],
             descriptions: [],
             isAutomatic: true,
             deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
         };
+        if (locationName) {
+            recordData.locationName = locationName;
+        }
         
         // 保存打卡記錄
         await firebase.firestore().collection('clockInRecords').add(recordData);
@@ -1212,18 +1221,28 @@ async function checkAndHandleOvertimeClockOut() {
             console.log('用戶資料不存在');
             return;
         }
-        
         const userData = userDoc.data();
         const currentStatus = userData.clockInStatus;
-        const lastClockInTime = userData.lastClockInTime;
         
         // 只處理上班狀態的用戶
-        if (currentStatus !== '上班' || !lastClockInTime) {
+        if (currentStatus !== '上班') {
             console.log(`當前狀態：${currentStatus}，不需要檢查超時`);
             return;
         }
         
-        // 計算上班時間
+        // 取得最近一次「上班」打卡紀錄的時間（不依賴 users 的 lastClockInTime）
+        const lastClockInSnap = await firebase.firestore()
+            .collection('clockInRecords')
+            .where('userId', '==', user.uid)
+            .where('type', '==', '上班')
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+        if (lastClockInSnap.empty) {
+            console.log('找不到最近的上班打卡紀錄，跳過超時檢查');
+            return;
+        }
+        const lastClockInTime = lastClockInSnap.docs[0].data().timestamp;
         const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
         const now = new Date();
         const workingHours = (now - clockInTime) / (1000 * 60 * 60); // 轉換為小時
@@ -1280,76 +1299,83 @@ async function checkAllUsersOvertimeStatus() {
             const userData = doc.data();
             const userId = doc.id;
             const currentStatus = userData.clockInStatus;
-            const lastClockInTime = userData.lastClockInTime;
             
-            // 只檢查上班狀態的用戶
-            if (currentStatus === '上班' && lastClockInTime) {
-                const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
-                const now = new Date();
-                const workingHours = (now - clockInTime) / (1000 * 60 * 60);
-                
-                if (workingHours >= autoClockOutSettings.workHours) {
-                    overtimeUsers.push({
-                        userId,
-                        displayName: userData.displayName || userData.email || userId,
-                        workingHours: workingHours.toFixed(2),
-                        clockInTime: clockInTime
-                    });
-                }
+            // 只檢查上班狀態的用戶，並以紀錄中的時間為準
+            if (currentStatus === '上班') {
+                overtimeUsers.push({ userId, userData });
             }
         });
         
         if (overtimeUsers.length > 0) {
-            console.log(`發現 ${overtimeUsers.length} 位用戶超時：`, overtimeUsers);
-            
-            // 自動為所有超時用戶執行下班打卡並更新狀態
+            const resultUsers = [];
+            // 逐一查詢最近的上班紀錄，判斷是否超時並處理
             for (const ou of overtimeUsers) {
                 try {
-                    const userRef = firebase.firestore().collection('users').doc(ou.userId);
-                    const userDoc = await userRef.get();
-                    const data = userDoc.exists ? userDoc.data() : {};
-                    const lastLocation = data.lastLocation;
-                    // 若缺少有效位置，提供預設座標並加註位置名稱
-                    let location = lastLocation;
-                    let locationName = null;
-                    if (!lastLocation || typeof lastLocation.latitude === 'undefined' || typeof lastLocation.longitude === 'undefined') {
-                        location = new firebase.firestore.GeoPoint(0, 0);
-                        locationName = '系統自動-未知位置';
+                    const lastClockInSnap = await firebase.firestore()
+                        .collection('clockInRecords')
+                        .where('userId', '==', ou.userId)
+                        .where('type', '==', '上班')
+                        .orderBy('timestamp', 'desc')
+                        .limit(1)
+                        .get();
+                    if (lastClockInSnap.empty) continue;
+                    const lastClockInTime = lastClockInSnap.docs[0].data().timestamp;
+                    const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
+                    const now = new Date();
+                    const workingHours = (now - clockInTime) / (1000 * 60 * 60);
+                    if (workingHours >= autoClockOutSettings.workHours) {
+                        // 準備位置
+                        let location = null;
+                        let locationName = null;
+                        const hasCurrentLocation = window.state && window.state.currentLocation &&
+                            typeof window.state.currentLocation.lat === 'number' &&
+                            typeof window.state.currentLocation.lng === 'number';
+                        if (hasCurrentLocation) {
+                            location = new firebase.firestore.GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
+                        } else {
+                            location = new firebase.firestore.GeoPoint(0, 0);
+                            locationName = '系統自動-未知位置';
+                        }
+                        const recordData = {
+                            userId: ou.userId,
+                            type: '自動下班',
+                            timestamp: firebase.firestore.Timestamp.now(),
+                            location: location,
+                            photoUrls: [],
+                            descriptions: [],
+                            isAutomatic: true,
+                            deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
+                        };
+                        if (locationName) {
+                            recordData.locationName = locationName;
+                        }
+                        await firebase.firestore().collection('clockInRecords').add(recordData);
+                        await firebase.firestore().collection('users').doc(ou.userId).update({
+                            status: '已下班-未打卡',
+                            clockInStatus: '已下班-未打卡',
+                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        resultUsers.push({
+                            userId: ou.userId,
+                            displayName: ou.userData.displayName || ou.userData.email || ou.userId,
+                            workingHours: workingHours.toFixed(2),
+                            clockInTime
+                        });
                     }
-                    
-                    const recordData = {
-                        userId: ou.userId,
-                        type: '自動下班',
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        location: location,
-                        photoUrls: [],
-                        descriptions: [],
-                        isAutomatic: true,
-                        deviceId: (window.state && window.state.deviceId) ? window.state.deviceId : 'unknown-device'
-                    };
-                    if (locationName) {
-                        recordData.locationName = locationName;
-                    }
-                    
-                    await firebase.firestore().collection('clockInRecords').add(recordData);
-                    
-                    await userRef.update({
-                        status: '已下班-未打卡',
-                        clockInStatus: '已下班-未打卡',
-                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                    });
                 } catch (err) {
                     console.error(`自動下班處理失敗（${ou.userId}）:`, err);
                 }
             }
-            
-            if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                window.showToast(`已自動為 ${overtimeUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
+            if (resultUsers.length > 0) {
+                console.log(`發現 ${resultUsers.length} 位用戶超時：`, resultUsers);
+                if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+                    window.showToast(`已自動為 ${resultUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
+                } else {
+                    alert(`已自動為 ${resultUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
+                }
             } else {
-                alert(`已自動為 ${overtimeUsers.length} 位同事執行下班打卡，狀態更新為「已下班-未打卡」`);
+                console.log('沒有發現超時的用戶');
             }
-        } else {
-            console.log('沒有發現超時的用戶');
         }
         
         return overtimeUsers;
