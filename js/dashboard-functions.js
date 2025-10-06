@@ -35,13 +35,13 @@ function calculateWorkingTime(status, clockInTime) {
  */
 function getStatusDisplayText(status, location) {
     switch(status) {
-        case '上班': return '上班中-辦公室';
+        case '上班': return '上班中-在辦公司';
         case '下班': return '已下班';
         case '已下班-未打卡': return '已下班-未打卡';
         case '外出': return location ? `外出-${location}` : '外出中';
         case '抵達': return location ? `抵達-${location}` : '抵達';
         case '離開': return location ? `離開-${location}` : '離開';
-        case '返回': return '返回-辦公室';
+        case '返回': return '返回-在辦公司';
         case '臨時請假': return '請假申請';
         case '特殊勤務': return location ? `出勤-${location}` : '出勤中';
         default: return '尚未打卡';

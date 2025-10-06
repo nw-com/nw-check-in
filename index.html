@@ -655,6 +655,8 @@
                             recs.forEach(r => {
                                 const rowClass = hasAnomalies ? 'bg-red-50' : '';
                                 const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : new Date());
+                                const statusText = getStatusDisplayText(r.type || '未知', r.locationName || null);
+                                const statusColorClass = getStatusColor(statusText);
                                 html += `
                                     <tr class="${rowClass}">
                                         <td class="px-6 py-4 whitespace-nowrap">
@@ -664,7 +666,7 @@
                                             </div>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(r.type)}">${r.type || '未知'}</span>
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColorClass}">${statusText}</span>
                                             ${hasAnomalies ? '<div class="text-xs text-red-600 mt-1">異常</div>' : ''}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${ts.toLocaleString('zh-TW')}</td>
@@ -691,17 +693,15 @@
                 }
                 
                 function getStatusColor(status) {
-                    switch (status) {
-                        case '上班': return 'bg-green-100 text-green-800';
-                        case '下班': return 'bg-red-100 text-red-800';
-                        case '外出': return 'bg-blue-100 text-blue-800';
-                        case '返回': return 'bg-green-100 text-green-800';
-                        case '抵達': return 'bg-blue-100 text-blue-800';
-                        case '離開': return 'bg-blue-100 text-blue-800';
-                        case '臨時請假': return 'bg-orange-100 text-orange-800';
-                        case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
-                        default: return 'bg-gray-100 text-gray-800';
-                    }
+                    if (typeof status !== 'string') return 'bg-gray-100 text-gray-800';
+                    if (status.includes('上班')) return 'bg-green-100 text-green-800';
+                    if (status.includes('已下班-未打卡')) return 'bg-yellow-100 text-yellow-800';
+                    if (status.includes('下班') || status.includes('已下班')) return 'bg-red-100 text-red-800';
+                    if (status.includes('外出') || status.includes('抵達') || status.includes('離開')) return 'bg-blue-100 text-blue-800';
+                    if (status.includes('返回')) return 'bg-green-100 text-green-800';
+                    if (status.includes('請假') || status.includes('臨時請假')) return 'bg-orange-100 text-orange-800';
+                    if (status.includes('特殊勤務') || status.includes('出勤')) return 'bg-indigo-100 text-indigo-800';
+                    return 'bg-gray-100 text-gray-800';
                 }
             }
 
@@ -1969,11 +1969,12 @@
                         filtered.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
-                            const statusColor = getStatusColor(record.type);
+                            const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null);
+                            const statusColor = getStatusColor(statusText);
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
                                     <div>
-                                        <p class="font-bold text-lg ${statusColor}">${record.type}</p>
+                                        <p class="font-bold text-lg ${statusColor}">${statusText}</p>
                                         <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
                                     </div>
                                     <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
@@ -2139,11 +2140,15 @@
                     <div class="h-full w-full relative">
                         <div id="group-map" class="h-full w-full"></div>
                         <div id="group-map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
+                        <button id="group-map-center-btn" class="absolute bottom-3 right-3 bg-white text-gray-700 border border-gray-300 rounded-full shadow px-3 py-2 flex items-center hover:bg-gray-50">
+                            <i data-lucide="focus" class="w-4 h-4 mr-2"></i>回到公司
+                        </button>
                         <div class="absolute bottom-0 left-0 right-0 p-2">
                             <div id="group-user-list" class="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg max-h-[150px] overflow-y-auto p-2 space-y-2"></div>
                         </div>
                     </div>
                 `;
+                try { lucide.createIcons(); } catch(e) {}
                 if (state.googleMapsLoaded) {
                     initGroupMap();
                 } else {
@@ -2157,8 +2162,29 @@
                 const mapDiv = document.getElementById('group-map');
                 const mapLoader = document.getElementById('group-map-loader');
                 if (!mapDiv || !mapLoader) return;
-                const defaultCenter = { lat: 25.0330, lng: 121.5654 };
-                state.groupMap = new google.maps.Map(mapDiv, { center: defaultCenter, zoom: 12, disableDefaultUI: true, zoomControl: true, mapId: 'DEMO_MAP_ID' });
+                let mapCenter = { lat: 25.0330, lng: 121.5654 };
+                try {
+                    const docSnap = await getDoc(doc(db, "settings", "location"));
+                    if (docSnap.exists()) {
+                        const s = docSnap.data();
+                        if (typeof s.companyLat === 'number' && typeof s.companyLng === 'number') {
+                            mapCenter = { lat: s.companyLat, lng: s.companyLng };
+                        }
+                    }
+                } catch (e) { console.warn("載入公司位置失敗，使用預設中心點", e); }
+                state.groupMap = new google.maps.Map(mapDiv, { center: mapCenter, zoom: 12, disableDefaultUI: true, zoomControl: true, mapId: 'DEMO_MAP_ID' });
+                state.companyCenter = mapCenter;
+                const centerBtn = document.getElementById('group-map-center-btn');
+                if (centerBtn) {
+                    centerBtn.addEventListener('click', () => {
+                        if (state.companyCenter) {
+                            state.groupMap.panTo(state.companyCenter);
+                            state.groupMap.setZoom(14);
+                        } else {
+                            showToast('尚未設定公司座標', true);
+                        }
+                    });
+                }
                 mapLoader.classList.add('hide');
                 listenForGroupUserLocations();
             }
@@ -2304,7 +2330,7 @@
                                     <div class="font-semibold">${userName}</div>
                                     <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
                                     <div class="mt-1 flex items-center">
-                                        <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
+                                        <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(getStatusDisplayText(record.type || '未知', record.locationName || null))}">${getStatusDisplayText(record.type || '未知', record.locationName || null)}</span>
                         ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                     </div>
                                     ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
@@ -2367,6 +2393,9 @@
                     <div class="h-full w-full relative">
                         <div id="tracking-map" class="h-full w-full"></div>
                         <div id="tracking-map-loader" class="absolute inset-0 bg-white/70 flex items-center justify-center"><div class="loader"></div></div>
+                        <button id="tracking-map-center-btn" class="absolute bottom-3 right-3 bg-white text-gray-700 border border-gray-300 rounded-full shadow px-3 py-2 flex items-center hover:bg-gray-50">
+                            <i data-lucide="focus" class="w-4 h-4 mr-2"></i>回到公司
+                        </button>
                         <div class="absolute bottom-0 left-0 right-0 p-2">
                             <div id="user-tracking-list" class="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg max-h-[150px] overflow-y-auto p-2 space-y-2">
                                 <!-- User list will be populated here -->
@@ -2374,7 +2403,7 @@
                         </div>
                     </div>
                 `;
-
+                try { lucide.createIcons(); } catch(e) {}
                 if (state.googleMapsLoaded) {
                     initTrackingMap();
                 } else {
@@ -2392,15 +2421,36 @@
                 const mapLoader = document.getElementById('tracking-map-loader');
                 if (!mapDiv || !mapLoader) return;
 
-                const defaultCenter = { lat: 25.0330, lng: 121.5654 };
+                let mapCenter = { lat: 25.0330, lng: 121.5654 };
+                try {
+                    const docSnap = await getDoc(doc(db, "settings", "location"));
+                    if (docSnap.exists()) {
+                        const s = docSnap.data();
+                        if (typeof s.companyLat === 'number' && typeof s.companyLng === 'number') {
+                            mapCenter = { lat: s.companyLat, lng: s.companyLng };
+                        }
+                    }
+                } catch (e) { console.warn("載入公司位置失敗，使用預設中心點", e); }
                 
                 state.trackingMap = new google.maps.Map(mapDiv, {
-                    center: defaultCenter,
+                    center: mapCenter,
                     zoom: 12,
                     disableDefaultUI: true,
                     zoomControl: true,
                     mapId: 'DEMO_MAP_ID' // Required for Advanced Markers
                 });
+                state.companyCenter = mapCenter;
+                const centerBtn = document.getElementById('tracking-map-center-btn');
+                if (centerBtn) {
+                    centerBtn.addEventListener('click', () => {
+                        if (state.companyCenter) {
+                            state.trackingMap.panTo(state.companyCenter);
+                            state.trackingMap.setZoom(14);
+                        } else {
+                            showToast('尚未設定公司座標', true);
+                        }
+                    });
+                }
 
                 mapLoader.classList.add('hide');
                 listenForUserLocations();
@@ -2513,7 +2563,7 @@
                                             <div class="font-semibold">${userName}</div>
                                             <div class="text-sm text-gray-500">${time.toLocaleString('zh-TW')}</div>
                                             <div class="mt-1 flex items-center">
-                                                <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(record.type)}">${record.type}</span>
+                                                <span class="px-2 py-0.5 rounded text-sm ${getStatusBgColor(getStatusDisplayText(record.type || '未知', record.locationName || null))}">${getStatusDisplayText(record.type || '未知', record.locationName || null)}</span>
                         ${record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' ? `<span class="ml-2 text-sm text-gray-500">${record.location.latitude.toFixed(6)}, ${record.location.longitude.toFixed(6)}</span>` : ''}
                                             </div>
                                             ${record.deviceId ? `<div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId}</div>` : ''}
@@ -2567,16 +2617,14 @@
                     });
                 }
                 
-                function getStatusBgColor(type) {
-                    switch(type) {
-                        case '上班': return 'bg-green-100 text-green-800';
-                        case '下班': return 'bg-red-100 text-red-800';
-                        case '外出': return 'bg-blue-100 text-blue-800';
-                        case '返回': return 'bg-green-100 text-green-800';
-                        case '臨時請假': return 'bg-orange-100 text-orange-800';
-                        case '特殊勤務': return 'bg-indigo-100 text-indigo-800';
-                        default: return 'bg-gray-100 text-gray-800';
-                    }
+                function getStatusBgColor(typeOrText) {
+                    const s = String(typeOrText || '').toLowerCase();
+                    if (s.includes('上班') || s.includes('返回') || s.includes('在辦')) return 'bg-green-100 text-green-800';
+                    if (s.includes('下班')) return 'bg-red-100 text-red-800';
+                    if (s.includes('外出') || s.includes('抵達') || s.includes('離開')) return 'bg-blue-100 text-blue-800';
+                    if (s.includes('請假')) return 'bg-orange-100 text-orange-800';
+                    if (s.includes('特殊勤務')) return 'bg-indigo-100 text-indigo-800';
+                    return 'bg-gray-100 text-gray-800';
                 }
             }
             
