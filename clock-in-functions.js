@@ -131,15 +131,18 @@ function updateStatusDisplay() {
     const statusText = document.getElementById('status-text');
     if (statusText) {
         // 強制檢查當前用戶的打卡狀態
-        if (firebase.auth().currentUser) {
-            const userId = firebase.auth().currentUser.uid;
-            firebase.firestore().collection('users').doc(userId).get().then(doc => {
-                if (doc.exists && doc.data().clockInStatus) {
-                    state.clockInStatus = doc.data().clockInStatus;
-                    state.outboundLocation = doc.data().outboundLocation || null;
-                    state.dutyType = doc.data().dutyType || null;
-                    state.leaveReason = doc.data().leaveReason || null;
-                    state.leaveStatus = doc.data().leaveStatus || null;
+        if (window.__auth?.currentUser) {
+            const userId = window.__auth.currentUser.uid;
+            const { doc, getDoc } = window.__fs;
+            const userRef = doc(window.__db, 'users', userId);
+            getDoc(userRef).then(userDoc => {
+                if (userDoc.exists() && userDoc.data().clockInStatus) {
+                    const data = userDoc.data();
+                    state.clockInStatus = data.clockInStatus;
+                    state.outboundLocation = data.outboundLocation || null;
+                    state.dutyType = data.dutyType || null;
+                    state.leaveReason = data.leaveReason || null;
+                    state.leaveStatus = data.leaveStatus || null;
                 }
                 
                 // 根據狀態更新顯示
@@ -212,14 +215,14 @@ function updateDashboardStatus() {
 // 初始化打卡按鈕狀態
 function initClockInButtonStatus() {
     // 檢查用戶是否已登入
-    if (!firebase.auth().currentUser) {
+    if (!window.__auth?.currentUser) {
         console.log("用戶尚未登入，無法初始化打卡按鈕");
         setTimeout(initClockInButtonStatus, 1000); // 延遲重試
         return;
     }
     
     // 獲取當前用戶ID
-    const userId = firebase.auth().currentUser.uid;
+    const userId = window.__auth.currentUser.uid;
     
     // 檢查按鈕容器是否存在
     const clockInButtons = document.getElementById('clock-in-buttons');
@@ -244,11 +247,14 @@ function initClockInButtonStatus() {
     });
     
     // 從Firestore獲取用戶最後的打卡狀態
-    firebase.firestore().collection('users').doc(userId).get().then(doc => {
-        if (doc.exists && doc.data().clockInStatus) {
+    const { doc, getDoc } = window.__fs;
+    const userRef = doc(window.__db, 'users', userId);
+    getDoc(userRef).then(userDoc => {
+        if (userDoc.exists() && userDoc.data().clockInStatus) {
             // 設置全局狀態
-            state.clockInStatus = doc.data().clockInStatus;
-            state.outboundLocation = doc.data().outboundLocation || null;
+            const data = userDoc.data();
+            state.clockInStatus = data.clockInStatus;
+            state.outboundLocation = data.outboundLocation || null;
             
             // 更新按鈕狀態
             updateButtonStatus();
@@ -435,7 +441,7 @@ function enableSpecialButton(buttonText, bgClass) {
 // 檢查今天是否已經上班打卡
 function checkIfCheckedInToday() {
     // 獲取當前用戶ID
-    const userId = firebase.auth().currentUser?.uid;
+    const userId = window.__auth?.currentUser?.uid;
     if (!userId) return false;
     
     // 獲取今天的日期（僅年月日）
@@ -714,7 +720,7 @@ function openTempLeaveModal() {
             showLoading(true);
             
             // 獲取當前用戶
-            const user = firebase.auth().currentUser;
+            const user = window.__auth?.currentUser;
             if (!user) {
                 showToast('請先登入', true);
                 showLoading(false);
@@ -722,26 +728,27 @@ function openTempLeaveModal() {
             }
             
             // 創建請假記錄
+            const { addDoc, collection, updateDoc, doc, Timestamp, serverTimestamp } = window.__fs;
             const leaveData = {
                 userId: user.uid,
                 userName: state.currentUser.displayName || user.email,
                 reason: reason,
-                startTime: firebase.firestore.Timestamp.fromDate(startTime),
-                endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                startTime: Timestamp.fromDate(startTime),
+                endTime: Timestamp.fromDate(endTime),
                 status: 'pending', // 待審核
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                createdAt: serverTimestamp()
             };
             
             // 保存到 Firestore
-            const leaveRef = await firebase.firestore().collection('leaves').add(leaveData);
+            const leaveRef = await addDoc(collection(window.__db, 'leaves'), leaveData);
             console.log('請假記錄已創建:', leaveRef.id);
             
             // 更新用戶狀態
-            await firebase.firestore().collection('users').doc(user.uid).update({
+            await updateDoc(doc(window.__db, 'users', user.uid), {
                 clockInStatus: '臨時請假',
                 leaveReason: reason,
-                leaveStartTime: firebase.firestore.Timestamp.fromDate(startTime),
-                leaveEndTime: firebase.firestore.Timestamp.fromDate(endTime)
+                leaveStartTime: Timestamp.fromDate(startTime),
+                leaveEndTime: Timestamp.fromDate(endTime)
             });
             console.log('用戶狀態已更新為請假申請');
             
@@ -930,7 +937,7 @@ function openSpecialDutyModal() {
             showLoading(true);
             
             // 獲取當前用戶
-            const user = firebase.auth().currentUser;
+            const user = window.__auth?.currentUser;
             if (!user) {
                 showToast('請先登入', true);
                 showLoading(false);
@@ -938,27 +945,28 @@ function openSpecialDutyModal() {
             }
             
             // 創建特殊勤務記錄
+            const { addDoc, collection, updateDoc, doc, Timestamp, serverTimestamp } = window.__fs;
             const dutyData = {
                 userId: user.uid,
                 userName: state.currentUser.displayName || user.email,
                 dutyType: dutyType,
                 location: location,
-                startTime: firebase.firestore.Timestamp.fromDate(startTime),
-                endTime: firebase.firestore.Timestamp.fromDate(endTime),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                startTime: Timestamp.fromDate(startTime),
+                endTime: Timestamp.fromDate(endTime),
+                createdAt: serverTimestamp()
             };
             
             // 保存到 Firestore
-            const dutyRef = await firebase.firestore().collection('specialDuties').add(dutyData);
+            const dutyRef = await addDoc(collection(window.__db, 'specialDuties'), dutyData);
             console.log('特殊勤務記錄已創建:', dutyRef.id);
             
             // 更新用戶狀態
-            await firebase.firestore().collection('users').doc(user.uid).update({
+            await updateDoc(doc(window.__db, 'users', user.uid), {
                 clockInStatus: '特殊勤務',
                 dutyType: dutyType,
                 dutyLocation: location,
-                dutyStartTime: firebase.firestore.Timestamp.fromDate(startTime),
-                dutyEndTime: firebase.firestore.Timestamp.fromDate(endTime)
+                dutyStartTime: Timestamp.fromDate(startTime),
+                dutyEndTime: Timestamp.fromDate(endTime)
             });
             console.log('用戶狀態已更新為特殊勤務');
             
@@ -1037,7 +1045,7 @@ let autoClockOutSettings = {
 // 載入自動下班打卡設定
 async function loadAutoClockOutSettings() {
     try {
-        const user = firebase.auth().currentUser;
+        const user = window.__auth?.currentUser;
         // 未登入時不讀取遠端設定，使用預設值
         if (!user) {
             autoClockOutSettings.enabled = false;
@@ -1047,12 +1055,13 @@ async function loadAutoClockOutSettings() {
             return autoClockOutSettings;
         }
 
-        const settingsRef = firebase.firestore().collection('settings').doc('general');
-        const doc = await settingsRef.get();
+        const { doc, getDoc } = window.__fs;
+        const settingsRef = doc(window.__db, 'settings', 'general');
+        const settingsSnap = await getDoc(settingsRef);
         autoClockOutSettings.loaded = true;
 
-        if (doc.exists) {
-            const settings = doc.data() || {};
+        if (settingsSnap.exists()) {
+            const settings = settingsSnap.data() || {};
             // 啟用旗標健全化處理（支援布林或可轉換值）
             const enabledRaw = settings.enableAutoClockOut;
             autoClockOutSettings.enabled = typeof enabledRaw === 'boolean' ? enabledRaw : !!enabledRaw;
@@ -1118,15 +1127,17 @@ function startAutoClockOutTimer() {
 // 執行自動下班打卡
 async function performAutoClockOut() {
     try {
-        const user = firebase.auth().currentUser;
+        const user = window.__auth?.currentUser;
         if (!user) {
             console.error('用戶未登入，無法執行自動下班打卡');
             return;
         }
         
         // 檢查當前狀態是否為上班
-        const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
-        if (!userDoc.exists || userDoc.data().clockInStatus !== '上班') {
+        const { doc, getDoc, addDoc, collection, updateDoc, serverTimestamp, GeoPoint, Timestamp } = window.__fs;
+        const userRef = doc(window.__db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists() || userSnap.data().clockInStatus !== '上班') {
             console.log('當前狀態不是上班，取消自動下班打卡');
             return;
         }
@@ -1138,9 +1149,9 @@ async function performAutoClockOut() {
             typeof window.state.currentLocation.lat === 'number' &&
             typeof window.state.currentLocation.lng === 'number';
         if (hasCurrentLocation) {
-            location = new firebase.firestore.GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
+            location = new GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
         } else {
-            location = new firebase.firestore.GeoPoint(0, 0);
+            location = new GeoPoint(0, 0);
             locationName = '系統自動-未知位置';
         }
         
@@ -1148,7 +1159,7 @@ async function performAutoClockOut() {
         const recordData = {
             userId: user.uid,
             type: '自動下班',
-            timestamp: firebase.firestore.Timestamp.now(),
+            timestamp: serverTimestamp(),
             location: location,
             photoUrls: [],
             descriptions: [],
@@ -1160,16 +1171,16 @@ async function performAutoClockOut() {
         }
         
         // 保存打卡記錄
-        await firebase.firestore().collection('clockInRecords').add(recordData);
+        await addDoc(collection(window.__db, 'clockInRecords'), recordData);
         
         // 更新用戶狀態為「已下班-未打卡」
         const userUpdateData = {
             status: '已下班-未打卡',
             clockInStatus: '已下班-未打卡',
-            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            lastUpdated: serverTimestamp()
         };
         
-        await firebase.firestore().collection('users').doc(user.uid).update(userUpdateData);
+        await updateDoc(userRef, userUpdateData);
         
         // 更新本地狀態
         state.clockInStatus = '已下班-未打卡';
@@ -1200,7 +1211,7 @@ function stopAutoClockOutTimer() {
 // 檢查當前用戶是否已超時並需要自動下班打卡
 async function checkAndHandleOvertimeClockOut() {
     try {
-        const user = firebase.auth().currentUser;
+        const user = window.__auth?.currentUser;
         if (!user) {
             console.log('用戶未登入，無法檢查超時狀態');
             return;
@@ -1216,12 +1227,14 @@ async function checkAndHandleOvertimeClockOut() {
         }
         
         // 獲取用戶當前狀態
-        const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
-        if (!userDoc.exists) {
+        const { doc, getDoc, collection, query, where, orderBy, limit, getDocs } = window.__fs;
+        const userRef = doc(window.__db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
             console.log('用戶資料不存在');
             return;
         }
-        const userData = userDoc.data();
+        const userData = userSnap.data();
         const currentStatus = userData.clockInStatus;
         
         // 只處理上班狀態的用戶
@@ -1231,13 +1244,14 @@ async function checkAndHandleOvertimeClockOut() {
         }
         
         // 取得最近一次「上班」打卡紀錄的時間（不依賴 users 的 lastClockInTime）
-        const lastClockInSnap = await firebase.firestore()
-            .collection('clockInRecords')
-            .where('userId', '==', user.uid)
-            .where('type', '==', '上班')
-            .orderBy('timestamp', 'desc')
-            .limit(1)
-            .get();
+        const q = query(
+            collection(window.__db, 'clockInRecords'),
+            where('userId', '==', user.uid),
+            where('type', '==', '上班'),
+            orderBy('timestamp', 'desc'),
+            limit(1)
+        );
+        const lastClockInSnap = await getDocs(q);
         if (lastClockInSnap.empty) {
             console.log('找不到最近的上班打卡紀錄，跳過超時檢查');
             return;
@@ -1292,7 +1306,8 @@ async function checkAllUsersOvertimeStatus() {
         }
         
         // 獲取所有用戶
-        const usersSnapshot = await firebase.firestore().collection('users').get();
+        const { collection, getDocs } = window.__fs;
+        const usersSnapshot = await getDocs(collection(window.__db, 'users'));
         const overtimeUsers = [];
         
         usersSnapshot.forEach(doc => {
@@ -1311,13 +1326,15 @@ async function checkAllUsersOvertimeStatus() {
             // 逐一查詢最近的上班紀錄，判斷是否超時並處理
             for (const ou of overtimeUsers) {
                 try {
-                    const lastClockInSnap = await firebase.firestore()
-                        .collection('clockInRecords')
-                        .where('userId', '==', ou.userId)
-                        .where('type', '==', '上班')
-                        .orderBy('timestamp', 'desc')
-                        .limit(1)
-                        .get();
+                    const { query, where, orderBy, limit } = window.__fs;
+                    const lastQ = query(
+                        collection(window.__db, 'clockInRecords'),
+                        where('userId', '==', ou.userId),
+                        where('type', '==', '上班'),
+                        orderBy('timestamp', 'desc'),
+                        limit(1)
+                    );
+                    const lastClockInSnap = await getDocs(lastQ);
                     if (lastClockInSnap.empty) continue;
                     const lastClockInTime = lastClockInSnap.docs[0].data().timestamp;
                     const clockInTime = lastClockInTime.toDate ? lastClockInTime.toDate() : new Date(lastClockInTime);
@@ -1331,15 +1348,17 @@ async function checkAllUsersOvertimeStatus() {
                             typeof window.state.currentLocation.lat === 'number' &&
                             typeof window.state.currentLocation.lng === 'number';
                         if (hasCurrentLocation) {
-                            location = new firebase.firestore.GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
+                            const { GeoPoint } = window.__fs;
+                            location = new GeoPoint(window.state.currentLocation.lat, window.state.currentLocation.lng);
                         } else {
-                            location = new firebase.firestore.GeoPoint(0, 0);
+                            const { GeoPoint } = window.__fs;
+                            location = new GeoPoint(0, 0);
                             locationName = '系統自動-未知位置';
                         }
                         const recordData = {
                             userId: ou.userId,
                             type: '自動下班',
-                            timestamp: firebase.firestore.Timestamp.now(),
+                            timestamp: window.__fs.Timestamp.now(),
                             location: location,
                             photoUrls: [],
                             descriptions: [],
@@ -1349,11 +1368,12 @@ async function checkAllUsersOvertimeStatus() {
                         if (locationName) {
                             recordData.locationName = locationName;
                         }
-                        await firebase.firestore().collection('clockInRecords').add(recordData);
-                        await firebase.firestore().collection('users').doc(ou.userId).update({
+                        const { addDoc, updateDoc, doc, serverTimestamp } = window.__fs;
+                        await addDoc(collection(window.__db, 'clockInRecords'), recordData);
+                        await updateDoc(doc(window.__db, 'users', ou.userId), {
                             status: '已下班-未打卡',
                             clockInStatus: '已下班-未打卡',
-                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                            lastUpdated: serverTimestamp()
                         });
                         resultUsers.push({
                             userId: ou.userId,

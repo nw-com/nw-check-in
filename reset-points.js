@@ -1,4 +1,4 @@
-// 重置所有用戶點數為0的函數
+// 重置所有用戶點數為0的函數（v10 模組 API）
 async function resetAllUserPoints() {
     if (!confirm('確定要將所有用戶的獎懲點數重置為0嗎？此操作無法撤銷。')) {
         return;
@@ -7,13 +7,15 @@ async function resetAllUserPoints() {
     try {
         showLoading(true);
         
+        const db = window.__db;
+        const { collection, getDocs, writeBatch, doc } = window.__fs;
         // 獲取所有用戶
-        const usersSnapshot = await firebase.firestore().collection("users").get();
-        const batch = firebase.firestore().batch();
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        const batch = writeBatch(db);
         
         // 批量更新所有用戶的點數為0
         usersSnapshot.forEach(userDoc => {
-            const userRef = firebase.firestore().collection("users").doc(userDoc.id);
+            const userRef = doc(db, "users", userDoc.id);
             batch.update(userRef, { points: 0 });
         });
         
@@ -59,13 +61,15 @@ function setupMonthlyPointsReset() {
             try {
                 console.log("執行每月自動重置點數");
                 
+                const db = window.__db;
+                const { collection, getDocs, writeBatch, doc, serverTimestamp, addDoc } = window.__fs;
                 // 獲取所有用戶
-                const usersSnapshot = await firebase.firestore().collection("users").get();
-                const batch = firebase.firestore().batch();
+                const usersSnapshot = await getDocs(collection(db, "users"));
+                const batch = writeBatch(db);
                 
                 // 批量更新所有用戶的點數為0
                 usersSnapshot.forEach(userDoc => {
-                    const userRef = firebase.firestore().collection("users").doc(userDoc.id);
+                    const userRef = doc(db, "users", userDoc.id);
                     batch.update(userRef, { points: 0 });
                 });
                 
@@ -76,12 +80,12 @@ function setupMonthlyPointsReset() {
                 
                 // 記錄重置時間
                 const resetLog = {
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    timestamp: serverTimestamp(),
                     action: "monthly_auto_reset",
                     description: "系統自動執行每月點數重置"
                 };
                 
-                await firebase.firestore().collection("systemLogs").add(resetLog);
+                await addDoc(collection(db, "systemLogs"), resetLog);
                 
                 // 設定下一次重置
                 scheduleNextReset();
@@ -104,10 +108,14 @@ function setupMonthlyPointsReset() {
 // 當管理員登入時初始化每月重置功能
 function initPointsResetFeatures() {
     // 檢查用戶是否為管理員
-    firebase.auth().onAuthStateChanged((user) => {
+    const auth = window.__auth;
+    const { onAuthStateChanged } = window.__authHelpers;
+    onAuthStateChanged(auth, (user) => {
         if (user) {
-            firebase.firestore().collection("users").doc(user.uid).get().then(doc => {
-                if (doc.exists && doc.data().role === 'admin') {
+            const db = window.__db;
+            const { getDoc, doc } = window.__fs;
+            getDoc(doc(db, "users", user.uid)).then(docSnap => {
+                if (docSnap.exists() && docSnap.data().role === 'admin') {
                     // 設定每月自動重置
                     setupMonthlyPointsReset();
                 }
@@ -117,6 +125,16 @@ function initPointsResetFeatures() {
 }
 
 // 頁面載入時初始化
-document.addEventListener('DOMContentLoaded', () => {
-    initPointsResetFeatures();
-});
+// 等待 index.html 模組初始化完成（__auth/__db/__fs 就緒）
+function initWhenFirebaseReady() {
+    if (window.__auth && window.__db && window.__fs && window.__authHelpers) {
+        initPointsResetFeatures();
+    } else {
+        // 若尚未就緒，稍後重試
+        setTimeout(initWhenFirebaseReady, 200);
+    }
+}
+
+// 優先透過事件觸發；若事件不可用則退回輪詢
+window.addEventListener('firebase-ready', initWhenFirebaseReady);
+document.addEventListener('DOMContentLoaded', initWhenFirebaseReady);

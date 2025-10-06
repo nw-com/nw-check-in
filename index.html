@@ -15,64 +15,7 @@
     <script src="js/other.js" defer></script>
     <script src="js/calendar.js" defer></script>
     
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
-    
-    <!-- Firebase 初始化 -->
-    <script>
-        // Firebase 配置
-        const firebaseConfig = {
-          apiKey: "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg",
-          authDomain: "nw-check-in.firebaseapp.com",
-          projectId: "nw-check-in",
-          storageBucket: "nw-check-in.appspot.com",
-          messagingSenderId: "1060821780559",
-          appId: "1:1060821780559:web:2638d630526d54f1a5023a",
-          measurementId: "G-61Q1QNNRD2"
-        };
-        
-        // 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        
-        // 獲取 Firestore 實例
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        // 啟用 v8 Firestore 離線持久化
-        if (db && typeof db.enablePersistence === 'function') {
-          db.enablePersistence({ synchronizeTabs: true }).catch(function(err) {
-            if (err && err.code === 'failed-precondition') {
-              console.log('無法啟用離線持久化：偵測到多個分頁同時使用');
-            } else if (err && err.code === 'unimplemented') {
-              console.log('瀏覽器不支援離線持久化功能');
-            } else {
-              console.log('啟用離線持久化發生錯誤：', err);
-            }
-          });
-        }
-        
-        // Google Maps API Key
-        const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtbrary_Jw5zOzyjOqq3CM0VYrDw";
-        
-        // 初始化應用
-        window.addEventListener('DOMContentLoaded', () => {
-            // 檢查用戶登入狀態
-            firebase.auth().onAuthStateChanged((user) => {
-                if (user) {
-                    console.log('用戶已登入:', user.uid);
-                    // 由各頁面在渲染完成後自行初始化所需功能（例如定位打卡頁呼叫 initClockInButtonStatus）
-                } else {
-                    console.log('用戶未登入，顯示登入頁面');
-                    // 顯示登入頁面
-                    document.getElementById('login-page').classList.remove('hide');
-                    document.getElementById('app-container').classList.add('hide');
-                    document.getElementById('loading-screen').classList.add('hide');
-                }
-            });
-        });
-    </script>
+    <!-- 已移除 Firebase compat SDK 與初始化；統一使用下方 v10 模組段 -->
     
     <script src="clock-in-functions.js" defer></script>
     <script src="reset-points.js" defer></script>
@@ -322,11 +265,33 @@
         import { 
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, onSnapshot,
             query, where, getDocs, serverTimestamp, orderBy, limit, GeoPoint, Timestamp, writeBatch,
-            enableIndexedDbPersistence
+            enableIndexedDbPersistence, arrayUnion, arrayRemove
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { 
             getStorage, ref, uploadBytes, getDownloadURL, deleteObject
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+        // 暴露必要的 helper 供非模組腳本使用（過渡期）
+        window.__fs = {
+            collection,
+            getDocs,
+            writeBatch,
+            doc,
+            serverTimestamp,
+            addDoc,
+            getDoc,
+            updateDoc,
+            setDoc,
+            query,
+            where,
+            orderBy,
+            limit,
+            Timestamp,
+            GeoPoint,
+            arrayUnion,
+            arrayRemove,
+        };
+        window.__authHelpers = { onAuthStateChanged };
 
         // Global State
         const state = {
@@ -394,17 +359,18 @@
             const auth = getAuth(app);
             const db = getFirestore(app);
             
-            // 啟用離線持久化，解決權限問題
-            enableIndexedDbPersistence(db)
-              .catch((err) => {
-                  if (err.code == 'failed-precondition') {
-                      console.log('多個標籤頁同時打開，無法啟用離線持久化');
-                  } else if (err.code == 'unimplemented') {
-                      console.log('當前瀏覽器不支持離線持久化');
-                  }
-              });
-              
+            // 已停用離線持久化以避免不同 SDK 版本衝突
+            // 若需啟用，請僅保留單一 SDK 版本並測試瀏覽器支援
+            
             const storage = getStorage(app);
+
+            // 暫掛到 window 供過渡期腳本（如 reset-points.js）使用
+            window.__app = app;
+        window.__auth = auth;
+        window.__db = db;
+        // 通知其他腳本 Firebase 與全域 helpers 已就緒
+        try { window.dispatchEvent(new Event('firebase-ready')); } catch (e) { /* noop */ }
+            window.__storage = storage;
 
             const loginPage = document.getElementById('login-page');
             const appContainer = document.getElementById('app-container');
@@ -1263,17 +1229,16 @@
                                             }
                                             // 僅管理員可寫入 Firestore；一般使用者改存 localStorage
                                             const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
-                                            if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
-                                                firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
-                                                    savedLocations: state.savedLocations
-                                                }).catch(err => console.warn('保存地址到設定失敗', err));
+                                            const user = window.__auth?.currentUser;
+                                            if (isAdmin && user) {
+                                                const { updateDoc, doc } = window.__fs; const db = window.__db;
+                                                updateDoc(doc(db, 'users', user.uid), { savedLocations: state.savedLocations })
+                                                    .catch(err => console.warn('保存地址到設定失敗', err));
                                             } else {
                                                 try {
-                                                    const key = `saved_locations_${firebase.auth().currentUser.uid}`;
+                                                    const key = `saved_locations_${window.__auth?.currentUser?.uid || 'guest'}`;
                                                     localStorage.setItem(key, JSON.stringify(state.savedLocations));
-                                                } catch (e) {
-                                                    console.warn('保存地址到本機失敗', e);
-                                                }
+                                                } catch (e) { console.warn('保存地址到本機失敗', e); }
                                             }
                                         }
                                     } catch (e) {
@@ -1282,8 +1247,9 @@
                                     // 保存外出地點到系統位置設定（otherLocations），僅管理員具有寫入權限
                                     try {
                                         const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
-                                        if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
-                                            const settingsRef = firebase.firestore().collection('settings').doc('location');
+                                        const user = window.__auth?.currentUser; const db = window.__db; const { doc, getDoc, setDoc, arrayUnion, serverTimestamp } = window.__fs;
+                                        if (isAdmin && user) {
+                                            const settingsRef = doc(db, 'settings', 'location');
                                             // 構建位置物件
                                             const locEntry = {
                                                 name: locationText,
@@ -1292,14 +1258,14 @@
                                                 radius: 100
                                             };
                                             // 先讀取，避免重複名稱
-                                            settingsRef.get().then(docSnap => {
-                                                const settings = docSnap.exists ? docSnap.data() : {};
+                                            getDoc(settingsRef).then(docSnap => {
+                                                const settings = docSnap.exists() ? docSnap.data() : {};
                                                 const otherLocations = Array.isArray(settings.otherLocations) ? settings.otherLocations : [];
                                                 const nameExists = otherLocations.some(l => (l && l.name) === locationText);
                                                 if (!nameExists) {
-                                                    settingsRef.set({
-                                                        otherLocations: firebase.firestore.FieldValue.arrayUnion(locEntry),
-                                                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                                    setDoc(settingsRef, {
+                                                        otherLocations: arrayUnion(locEntry),
+                                                        updatedAt: serverTimestamp()
                                                     }, { merge: true }).catch(err => console.warn('保存其他位置失敗', err));
                                                 }
                                             }).catch(err => console.warn('讀取位置設定失敗', err));
@@ -1451,19 +1417,17 @@
                     const status = statusFilter.value;
                     const date = dateFilter.value;
 
-                    const user = firebase.auth().currentUser;
+                    const user = window.__auth?.currentUser;
                     if (!user) {
                         recordsList.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-500">請先登入以查看請假紀錄</td></tr>';
                         return;
                     }
-
-                    let queryRef = firebase.firestore().collection('leaves').where('userId', '==', user.uid);
-                    if (status !== 'all') {
-                        queryRef = queryRef.where('status', '==', status);
-                    }
+                    const db = window.__db; const { collection, where, query, getDocs } = window.__fs;
+                    let q = query(collection(db, 'leaves'), where('userId', '==', user.uid));
+                    if (status !== 'all') { q = query(q, where('status', '==', status)); }
                     // 移除排序以避免 Firestore 索引需求，改用前端排序（若需要）
 
-                    queryRef.get().then((querySnapshot) => {
+                    getDocs(q).then((querySnapshot) => {
                         if (querySnapshot.empty) {
                             recordsList.innerHTML = '';
                             noRecordsMsg.classList.remove('hidden');
@@ -1484,8 +1448,8 @@
                         let hasRecords = false;
                         const leaves = [];
 
-                        querySnapshot.forEach((doc) => {
-                            const leave = { id: doc.id, ...doc.data() };
+                        querySnapshot.forEach((docSnap) => {
+                            const leave = { id: docSnap.id, ...docSnap.data() };
                             leaves.push(leave);
                         });
 
@@ -1543,14 +1507,13 @@
                                 }
                                 if (!confirm('確定要取消這筆假單嗎？')) return;
                                 try {
-                                    const db = firebase.firestore();
-                                    const user = firebase.auth().currentUser;
-                                    await db.collection('leaves').doc(id).update({ status: 'canceled', canceledAt: new Date() });
+                                    const db = window.__db; const { updateDoc, doc, serverTimestamp, Timestamp } = window.__fs; const user = window.__auth?.currentUser;
+                                    await updateDoc(doc(db, 'leaves', id), { status: 'canceled', canceledAt: Timestamp.fromDate(new Date()) });
                                     if (user) {
-                                        await db.collection('users').doc(user.uid).update({
+                                        await updateDoc(doc(db, 'users', user.uid), {
                                             leaveStatus: 'canceled',
                                             status: '未打卡',
-                                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                                            lastUpdated: serverTimestamp()
                                         });
                                     }
                                     showToast('已取消假單');
@@ -1710,23 +1673,25 @@
                     try {
                         showLoading(true);
                         
+                        const db = window.__db; const { addDoc, collection, serverTimestamp, Timestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
+                        if (!user) throw new Error('尚未登入');
                         // 創建請假記錄（以小時為單位）
-                        await firebase.firestore().collection('leaves').add({
-                            userId: firebase.auth().currentUser.uid,
-                            userName: state.currentUserData.name,
+                        await addDoc(collection(db, 'leaves'), {
+                            userId: user.uid,
+                            userName: state.currentUserData?.name || '',
                             reason: reason,
                             reasonType: reasonType,
-                            startTime: firebase.firestore.Timestamp.fromDate(startTime),
-                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
+                            startTime: Timestamp.fromDate(startTime),
+                            endTime: Timestamp.fromDate(endTime),
                             status: 'pending',
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            createdAt: serverTimestamp()
                         });
                         
                         // 更新用戶狀態
-                        await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                        await updateDoc(doc(db, 'users', user.uid), {
                             status: '請假中',
                             leaveStatus: 'pending',
-                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                            lastUpdated: serverTimestamp()
                         });
                         
                         showToast('請假申請已提交，等待審核');
@@ -1891,22 +1856,24 @@
                     try {
                         showLoading(true);
                         
+                        const db = window.__db; const { addDoc, collection, Timestamp, serverTimestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
+                        if (!user) throw new Error('尚未登入');
                         // 創建特殊勤務記錄
-                        await firebase.firestore().collection('specialDuties').add({
-                            userId: firebase.auth().currentUser.uid,
-                            userName: state.currentUserData.name,
+                        await addDoc(collection(db, 'specialDuties'), {
+                            userId: user.uid,
+                            userName: state.currentUserData?.name || '',
                             dutyName: dutyName,
                             dutyType: dutyType,
                             location: location,
-                            startTime: firebase.firestore.Timestamp.fromDate(startTime),
-                            endTime: firebase.firestore.Timestamp.fromDate(endTime),
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            startTime: Timestamp.fromDate(startTime),
+                            endTime: Timestamp.fromDate(endTime),
+                            createdAt: serverTimestamp()
                         });
                         
                         // 更新用戶狀態
-                        await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
+                        await updateDoc(doc(db, 'users', user.uid), {
                             status: `出勤-${dutyName}`,
-                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                            lastUpdated: serverTimestamp()
                         });
                         
                         // 保存地點到設定
@@ -1925,17 +1892,13 @@
                             
                             // 僅管理員可寫入 Firestore；一般使用者改存 localStorage
                             const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
-                            if (isAdmin && firebase && firebase.firestore && firebase.auth && firebase.auth().currentUser) {
-                                await firebase.firestore().collection('users').doc(firebase.auth().currentUser.uid).update({
-                                    savedLocations: state.savedLocations
-                                });
+                            if (isAdmin && user) {
+                                await updateDoc(doc(db, 'users', user.uid), { savedLocations: state.savedLocations });
                             } else {
                                 try {
-                                    const key = `saved_locations_${firebase.auth().currentUser.uid}`;
+                                    const key = `saved_locations_${user?.uid || 'guest'}`;
                                     localStorage.setItem(key, JSON.stringify(state.savedLocations));
-                                } catch (e) {
-                                    console.warn('保存地址到本機失敗', e);
-                                }
+                                } catch (e) { console.warn('保存地址到本機失敗', e); }
                             }
                         }
                         
@@ -2711,18 +2674,19 @@
                     const date = dateFilter.value;
                     
                     // 構建查詢
-                    let leavesQuery = firebase.firestore().collection('leaves');
+                    const db = window.__db; const { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, serverTimestamp } = window.__fs;
+                    let leavesQuery = collection(db, 'leaves');
                     
                     // 如果選擇了特定狀態
                     if (status !== 'all') {
-                        leavesQuery = leavesQuery.where('status', '==', status);
+                        leavesQuery = query(leavesQuery, where('status', '==', status));
                     }
-                    
+
                     // 按創建時間排序
-                    leavesQuery = leavesQuery.orderBy('createdAt', 'desc');
-                    
+                    leavesQuery = query(leavesQuery, orderBy('createdAt', 'desc'));
+
                     // 執行查詢
-                    leavesQuery.get().then((querySnapshot) => {
+                    getDocs(leavesQuery).then((querySnapshot) => {
                         if (querySnapshot.empty) {
                             recordsList.innerHTML = '';
                             noRecordsMsg.classList.remove('hidden');
@@ -2743,9 +2707,9 @@
                         
                         let hasRecords = false;
                         
-                        querySnapshot.forEach((doc) => {
-                            const leave = doc.data();
-                            const leaveId = doc.id;
+                        querySnapshot.forEach((docSnap) => {
+                            const leave = docSnap.data();
+                            const leaveId = docSnap.id;
                             
                             // 如果選擇了日期，檢查請假時間是否在所選日期範圍內
                             if (selectedDate && nextDay) {
@@ -2834,27 +2798,24 @@
                                     showLoading(true);
                                     
                                     // 獲取請假記錄
-                                    const leaveDoc = await firebase.firestore().collection('leaves').doc(leaveId).get();
-                                    if (!leaveDoc.exists) {
+                                    const leaveDocSnap = await getDoc(doc(db, 'leaves', leaveId));
+                                    if (!leaveDocSnap.exists()) {
                                         showToast('找不到請假記錄', true);
                                         return;
                                     }
-                                    
-                                    const leaveData = leaveDoc.data();
+                                    const leaveData = leaveDocSnap.data();
                                     const userId = leaveData.userId;
                                     
                                     // 更新請假記錄狀態
-                                    await firebase.firestore().collection('leaves').doc(leaveId).update({
+                                    await updateDoc(doc(db, 'leaves', leaveId), {
                                         status: action === 'approve' ? 'approved' : 'rejected',
-                                        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                                        reviewedBy: firebase.auth().currentUser.uid
+                                        reviewedAt: serverTimestamp(),
+                                        reviewedBy: window.__auth?.currentUser?.uid || ''
                                     });
                                     
                                     // 如果核准，更新用戶狀態
                                     if (action === 'approve') {
-                                        await firebase.firestore().collection('users').doc(userId).update({
-                                            leaveStatus: 'approved'
-                                        });
+                                        await updateDoc(doc(db, 'users', userId), { leaveStatus: 'approved' });
                                     }
                                     
                                     showToast(`已${action === 'approve' ? '核准' : '拒絕'}請假申請`);
@@ -3486,9 +3447,10 @@
                                  // 模擬超時情況：建立一筆「9小時前上班」的合規打卡紀錄
                                  const nineHoursAgo = new Date();
                                  nineHoursAgo.setHours(nineHoursAgo.getHours() - 9);
-                                 const ts = firebase.firestore.Timestamp.fromDate(nineHoursAgo);
-                                 const loc = new firebase.firestore.GeoPoint(25.0330, 121.5654);
-                                 await firebase.firestore().collection('clockInRecords').add({
+                                 const db = window.__db; const { Timestamp, GeoPoint, addDoc, collection, serverTimestamp, setDoc, doc } = window.__fs;
+                                 const ts = Timestamp.fromDate(nineHoursAgo);
+                                 const loc = new GeoPoint(25.0330, 121.5654);
+                                 await addDoc(collection(db, 'clockInRecords'), {
                                      userId: user.uid,
                                      type: '上班',
                                      timestamp: ts,
@@ -3498,10 +3460,10 @@
                                      deviceId: 'test-device'
                                  });
                                  // 將使用者狀態設為上班（僅更新允許欄位）
-                                 await firebase.firestore().collection('users').doc(user.uid).set({
+                                 await setDoc(doc(db, 'users', user.uid), {
                                      clockInStatus: '上班',
                                      status: '上班',
-                                     lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                                     lastUpdated: serverTimestamp()
                                  }, { merge: true });
                                  
                                  showToast('已設定測試超時狀態（9小時前上班），請重新載入頁面測試自動下班打卡功能');
@@ -4832,7 +4794,7 @@
                         const safeLat = (location && typeof location.lat === 'number') ? location.lat : 0;
                         const safeLng = (location && typeof location.lng === 'number') ? location.lng : 0;
 
-                        const uid = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                        const uid = window.__auth?.currentUser?.uid || state.currentUser?.uid;
                         if (!uid) {
                             throw new Error('未登入或找不到使用者，無法寫入打卡記錄');
                         }
@@ -4867,7 +4829,7 @@
 
                         // 首次打卡裝置ID寫入：僅當使用者尚未有 firstClockInDeviceId
                         try {
-                            const uid3 = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                            const uid3 = window.__auth?.currentUser?.uid || state.currentUser?.uid;
                             const userRef = doc(db, "users", uid3);
                             const userSnap = await getDoc(userRef);
                             const hasFirst = userSnap.exists() && userSnap.data().firstClockInDeviceId;
@@ -4897,7 +4859,7 @@
                         }
                         
                         try {
-                            const uid2 = firebase.auth().currentUser?.uid || state.currentUser?.uid;
+                            const uid2 = window.__auth?.currentUser?.uid || state.currentUser?.uid;
                             await updateDoc(doc(db, "users", uid2), userUpdateData);
                         } catch (e) {
                             console.error('更新 users 狀態失敗：', e?.code, e?.message || e, { keys: Object.keys(userUpdateData) });
