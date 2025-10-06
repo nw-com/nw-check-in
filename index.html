@@ -864,30 +864,41 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     // 過濾掉不顯示的使用者
                     const visibleUsersList = users.filter(user => visibleUsers[user.id] !== false);
                     
-                    // 狀態優先級：上班/返回 > 外出/抵達/離開 > 下班/未打卡 > 請假/特殊勤務
-                    const statusPriority = (s) => {
-                        switch (s) {
-                            case '上班':
-                            case '返回':
-                                return 1;
-                            case '外出':
-                            case '抵達':
-                            case '離開':
-                                return 2;
-                            case '下班':
-                            case '已下班-未打卡':
-                                return 3;
-                            case '臨時請假':
-                            case '特殊勤務':
-                                return 4;
-                            default:
-                                return 5;
+                    // 狀態優先級（自訂）：
+                    // 1) 上班中-辦公室 2) 返回-辦公室 3) 外出-項目-地點 4) 抵達-項目-地點
+                    // 5) 離開-項目-地點 6) 請假中 7) 已下班 其餘置後
+                    const statusPriority = (user) => {
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const display = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                        // 請假中：臨時請假或當天有效的請假申請
+                        let isLeave = (user.clockInStatus === '臨時請假') || (display.includes('請假'));
+                        if (!isLeave) {
+                            const leave = user.leaveStatus || '';
+                            if (leave === 'approved' || leave === 'pending') {
+                                const now = new Date();
+                                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                                const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                                if (user.leaveStartTime && user.leaveEndTime) {
+                                    const leaveStart = user.leaveStartTime.toDate ? user.leaveStartTime.toDate() : new Date(user.leaveStartTime);
+                                    const leaveEnd = user.leaveEndTime.toDate ? user.leaveEndTime.toDate() : new Date(user.leaveEndTime);
+                                    isLeave = leaveStart <= todayEnd && leaveEnd >= todayStart;
+                                }
+                            }
                         }
+
+                        if (display.includes('上班') && (display.includes('辦公室') || display.includes('在辦公室'))) return 1;
+                        if (display.includes('返回') && (display.includes('辦公室') || display.includes('在辦公室'))) return 2;
+                        if (display.startsWith('外出-')) return 3;
+                        if (display.startsWith('抵達-')) return 4;
+                        if (display.startsWith('離開-')) return 5;
+                        if (isLeave) return 6;
+                        if (display.includes('已下班')) return 7;
+                        return 8;
                     };
 
                     visibleUsersList.sort((a, b) => {
-                        const prA = statusPriority(a.clockInStatus || '');
-                        const prB = statusPriority(b.clockInStatus || '');
+                        const prA = statusPriority(a);
+                        const prB = statusPriority(b);
                         if (prA !== prB) return prA - prB;
                         // 同優先級用最近更新時間（lastUpdated）新到舊
                         const tA = a.lastUpdated ? (a.lastUpdated.toDate ? a.lastUpdated.toDate() : new Date(a.lastUpdated)) : new Date(0);
@@ -1015,30 +1026,38 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     }
                     const visibleUsersList = users.filter(user => visibleUsers[user.id] !== false);
                     
-                    // 排序：狀態優先級 + 最近更新時間（新至舊） + 姓名
-                    const statusPriority = (s) => {
-                        switch (s) {
-                            case '上班':
-                            case '返回':
-                                return 1;
-                            case '外出':
-                            case '抵達':
-                            case '離開':
-                                return 2;
-                            case '下班':
-                            case '已下班-未打卡':
-                                return 3;
-                            case '臨時請假':
-                            case '特殊勤務':
-                                return 4;
-                            default:
-                                return 5;
+                    // 排序：自訂狀態優先級 + 最近更新時間（新至舊） + 姓名
+                    const statusPriority = (user) => {
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const display = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                        let isLeave = (user.clockInStatus === '臨時請假') || (display.includes('請假'));
+                        if (!isLeave) {
+                            const leave = user.leaveStatus || '';
+                            if (leave === 'approved' || leave === 'pending') {
+                                const now = new Date();
+                                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                                const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                                if (user.leaveStartTime && user.leaveEndTime) {
+                                    const leaveStart = user.leaveStartTime.toDate ? user.leaveStartTime.toDate() : new Date(user.leaveStartTime);
+                                    const leaveEnd = user.leaveEndTime.toDate ? user.leaveEndTime.toDate() : new Date(user.leaveEndTime);
+                                    isLeave = leaveStart <= todayEnd && leaveEnd >= todayStart;
+                                }
+                            }
                         }
+
+                        if (display.includes('上班') && (display.includes('辦公室') || display.includes('在辦公室'))) return 1;
+                        if (display.includes('返回') && (display.includes('辦公室') || display.includes('在辦公室'))) return 2;
+                        if (display.startsWith('外出-')) return 3;
+                        if (display.startsWith('抵達-')) return 4;
+                        if (display.startsWith('離開-')) return 5;
+                        if (isLeave) return 6;
+                        if (display.includes('已下班')) return 7;
+                        return 8;
                     };
 
                     visibleUsersList.sort((a, b) => {
-                        const prA = statusPriority(a.clockInStatus || '');
-                        const prB = statusPriority(b.clockInStatus || '');
+                        const prA = statusPriority(a);
+                        const prB = statusPriority(b);
                         if (prA !== prB) return prA - prB;
                         const tA = a.lastUpdated ? (a.lastUpdated.toDate ? a.lastUpdated.toDate() : new Date(a.lastUpdated)) : new Date(0);
                         const tB = b.lastUpdated ? (b.lastUpdated.toDate ? b.lastUpdated.toDate() : new Date(b.lastUpdated)) : new Date(0);
