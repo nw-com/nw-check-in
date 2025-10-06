@@ -39,7 +39,14 @@ const server = http.createServer((req, res) => {
         res.end('Server error: ' + error.code);
       }
     } else {
-      res.writeHead(200, { 'Content-Type': contentType });
+      // Disable caching to ensure latest files are served
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+      });
       res.end(content, 'utf-8');
     }
   });
