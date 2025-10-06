@@ -900,16 +900,37 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
                             myStatusFound = true;
-                            const clockInTime = user.lastClockInTime ? new Date(user.lastClockInTime.toDate()) : null;
-                            const workingTime = calculateWorkingTime(user.clockInStatus, user.clockInTime);
-                            document.getElementById('my-status').innerHTML = `
-                              <div class="flex items-center justify-between">
-                                <span class="font-semibold text-lg ${statusColor}">${statusText}</span>
-                                ${workingTime ? `<span class="text-sm text-gray-700">上班時間: ${workingTime}</span>` : ''}
-                              </div>
-                              <div class="text-sm text-gray-500 mt-1">
-                                ${clockInTime ? '打卡 ' + clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) : ''}
-                              </div>`;
+                            (async () => {
+                                try {
+                                    const recordsRef = collection(db, 'clockInRecords');
+                                    const q = query(recordsRef, where('userId', '==', state.currentUser.uid), orderBy('timestamp', 'desc'), limit(1));
+                                    const snap = await getDocs(q);
+                                    let innerHTML = '';
+                                    if (!snap.empty) {
+                                        const r = snap.docs[0].data();
+                                        const statusTextLast = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                                        const statusColorLast = getStatusColor(statusTextLast);
+                                        const ts = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
+                                        innerHTML = `
+                                          <div class="flex items-center justify-between">
+                                            <span class="font-semibold text-lg ${statusColorLast}">${statusTextLast}</span>
+                                          </div>
+                                          <div class="text-sm text-gray-500 mt-1">
+                                            ${ts ? '打卡 ' + ts.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) : ''}
+                                          </div>`;
+                                    } else {
+                                        const statusTextLast = '尚未打卡';
+                                        const statusColorLast = getStatusColor(statusTextLast);
+                                        innerHTML = `
+                                          <div class="flex items-center justify-between">
+                                            <span class="font-semibold text-lg ${statusColorLast}">${statusTextLast}</span>
+                                          </div>`;
+                                    }
+                                    document.getElementById('my-status').innerHTML = innerHTML;
+                                } catch (err) {
+                                    console.error('讀取最新打卡紀錄失敗', err);
+                                }
+                            })();
                         }
                     });
 
