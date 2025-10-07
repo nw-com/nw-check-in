@@ -3194,7 +3194,12 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
                         // 生成列表與地圖標記
                         augmentedUsers.forEach(user => {
-                            const hasLocation = user.lastLocation && typeof user.lastLocation.latitude === 'number' && typeof user.lastLocation.longitude === 'number';
+                            const recLoc = user.__latestRecord?.location || null;
+                            const recLat = recLoc && typeof recLoc.latitude === 'number' ? recLoc.latitude : (user.__latestRecord?.locationLat ?? null);
+                            const recLng = recLoc && typeof recLoc.longitude === 'number' ? recLoc.longitude : (user.__latestRecord?.locationLng ?? null);
+                            const hasRecordLocation = typeof recLat === 'number' && typeof recLng === 'number';
+                            const hasLastLocation = user.lastLocation && typeof user.lastLocation.latitude === 'number' && typeof user.lastLocation.longitude === 'number';
+                            const hasLocation = hasRecordLocation || hasLastLocation;
 
                             const userElement = document.createElement('div');
                             userElement.className = `flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${!hasLocation ? 'opacity-50' : ''}`;
@@ -3211,7 +3216,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             userListEl.appendChild(userElement);
 
                             if (hasLocation) {
-                                const position = { lat: user.lastLocation.latitude, lng: user.lastLocation.longitude };
+                                const position = hasRecordLocation
+                                    ? { lat: recLat, lng: recLng }
+                                    : { lat: user.lastLocation.latitude, lng: user.lastLocation.longitude };
                                 const markerIcon = document.createElement('img');
                                 markerIcon.src = user.avatarUrl || `https://placehold.co/40x40/EFEFEF/333333?text=${(user.name || 'U').charAt(0)}`;
                                 markerIcon.className = "w-9 h-9 rounded-full border-2 border-white shadow-md object-cover";
@@ -3223,12 +3230,16 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                     content: markerIcon,
                                 });
 
+                                const locationName = user.__latestRecord?.locationName
+                                    || (user.clockInStatus === '外出' ? (user.outboundLocation || '') : '')
+                                    || (user.lastLocation?.address || '');
                                 const infoWindow = new google.maps.InfoWindow({
                                     content: `
                                         <div class="p-1">
                                             <p class="font-bold">${user.name || '未知用戶'}</p>
                                             <p>狀態: ${user.__statusText || '未打卡'}</p>
                                             <p>最近狀態時間: ${user.__lastStatusTime ? formatDateTime(user.__lastStatusTime) : 'N/A'}</p>
+                                            ${locationName ? `<p>打卡地點: ${locationName}</p>` : ''}
                                         </div>
                                     `
                                 });
