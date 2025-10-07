@@ -5001,11 +5001,44 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
     </body>
   </html>`;
 
-                // 使用 data URL 直接載入完整內容，避免空白頁問題
-                const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(policyHtml);
-                const win = window.open(dataUrl, '_blank', 'width=800,height=900');
+                // 優先開啟獨立頁面，使用絕對網址避免相對路徑解析問題
+                const url = (window.location && window.location.origin ? window.location.origin : '') + '/privacy.html';
+                const win = window.open(url, '_blank', 'width=800,height=900');
+                if (win) {
+                    try {
+                        win.document.open();
+                        win.document.write(policyHtml);
+                        win.document.close();
+                        return;
+                    } catch (e) {
+                        console.error('寫入隱私權政策視窗內容失敗:', e);
+                    }
+                }
                 if (!win) {
-                    showToast('未能開啟新視窗，請允許瀏覽器彈出視窗', true);
+                    // 後備方案：以站內彈窗呈現
+                    const modalId = `privacy-modal-${Date.now()}`;
+                    const contentOnly = policyHtml.replace(/^[\s\S]*<body[^>]*>/i, '').replace(/<\/body>[\s\S]*$/i, '');
+                    const modalHTML = `
+                        <div id="${modalId}" class="modal-backdrop">
+                          <div class="modal-content w-[90%] max-w-[800px] bg-white rounded-lg shadow-xl flex flex-col">
+                            <div class="flex justify-between items-center p-4 border-b">
+                              <h3 class="font-bold text-lg">隱私權政策 - 西北打卡</h3>
+                              <button class="close-btn text-gray-500 hover:text-gray-700">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                              </button>
+                            </div>
+                            <div class="p-4 overflow-y-auto" style="max-height: 70vh;">
+                              ${contentOnly}
+                            </div>
+                          </div>
+                        </div>`;
+                    document.body.insertAdjacentHTML('beforeend', modalHTML);
+                    const backdrop = document.getElementById(modalId);
+                    const closeBtn = backdrop.querySelector('.close-btn');
+                    const close = () => backdrop.remove();
+                    closeBtn.addEventListener('click', close);
+                    backdrop.addEventListener('click', (e) => { if (e.target.id === modalId) close(); });
+                    lucide.createIcons();
                 }
             }
 
