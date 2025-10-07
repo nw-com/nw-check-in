@@ -1055,38 +1055,83 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         return 8;
                     };
 
-                    visibleUsersList.sort((a, b) => {
-                        const prA = statusPriority(a);
-                        const prB = statusPriority(b);
-                        if (prA !== prB) return prA - prB;
-                        const tA = a.lastUpdated ? (a.lastUpdated.toDate ? a.lastUpdated.toDate() : new Date(a.lastUpdated)) : new Date(0);
-                        const tB = b.lastUpdated ? (b.lastUpdated.toDate ? b.lastUpdated.toDate() : new Date(b.lastUpdated)) : new Date(0);
-                        if (tA.getTime() !== tB.getTime()) return tB - tA;
-                        return a.name.localeCompare(b.name, 'zh-Hant');
-                    }).forEach(user => {
-                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
-                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
-                        const statusColor = getStatusColor(statusText);
-                        const clockInTime = user.lastClockInTime ? new Date(user.lastClockInTime.toDate()) : null;
-                        const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
-                        listEl.innerHTML += `
-                            <div class=\"flex items-center justify-between bg-white p-3 rounded-md shadow-sm border\">
-                                <div class=\"flex items-center\">
-                                    <img src=\"${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name?.charAt(0) || 'U'}`}\" class=\"w-8 h-8 rounded-full mr-3 object-cover\">
-                                    <div>
-                                        <span class=\"font-medium text-gray-700\">${user.name || user.displayName || '未命名'}</span>
-                                        <div class=\"flex items-center mt-1\">
-                                            <span class=\"text-sm font-semibold ${statusColor} mr-2\">${statusText}</span>
-                                            <span class=\"text-xs text-gray-500\">${timeFormatted}</span>
+                    (async () => {
+                        const latestMap = {};
+                        try {
+                            await Promise.all(visibleUsersList.map(async (u) => {
+                                try {
+                                    const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+                                    const latestSnap = await getDocs(qLatest);
+                                    if (!latestSnap.empty) {
+                                        const ts = latestSnap.docs[0].data().timestamp;
+                                        latestMap[u.id] = ts?.toDate?.() ? ts.toDate() : (ts ? new Date(ts) : null);
+                                    } else {
+                                        latestMap[u.id] = null;
+                                    }
+                                } catch (e) {
+                                    console.warn('載入使用者最新打卡失敗:', e);
+                                    latestMap[u.id] = null;
+                                }
+                            }));
+                        } catch (e) {
+                            console.warn('建立最新打卡時間對應表失敗:', e);
+                        }
+
+                        visibleUsersList.sort((a, b) => {
+                            const prA = statusPriority(a);
+                            const prB = statusPriority(b);
+                            if (prA !== prB) return prA - prB;
+                            const tA = a.lastUpdated ? (a.lastUpdated.toDate ? a.lastUpdated.toDate() : new Date(a.lastUpdated)) : new Date(0);
+                            const tB = b.lastUpdated ? (b.lastUpdated.toDate ? b.lastUpdated.toDate() : new Date(b.lastUpdated)) : new Date(0);
+                            if (tA.getTime() !== tB.getTime()) return tB - tA;
+                            return a.name.localeCompare(b.name, 'zh-Hant');
+                        }).forEach(user => {
+                            const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                            const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                            const statusColor = getStatusColor(statusText);
+                            const clockInTime = latestMap[user.id];
+                            const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
+                            listEl.innerHTML += `
+                                <div class=\"flex items-center justify-between bg-white p-3 rounded-md shadow-sm border\">
+                                    <div class=\"flex items-center\">
+                                        <img src=\"${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${user.name?.charAt(0) || 'U'}`}\" class=\"w-8 h-8 rounded-full mr-3 object-cover\">
+                                        <div>
+                                            <span class=\"font-medium text-gray-700\">${user.name || user.displayName || '未命名'}</span>
+                                            <div class=\"flex items-center mt-1\">
+                                                <span class=\"text-sm font-semibold ${statusColor} mr-2\">${statusText}</span>
+                                                <span class=\"text-xs text-gray-500\" id=\"clock-time-${user.id}\">${timeFormatted}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div class=\"flex space-x-2\">
-                                    ${user.lastPhotoUrl ? `<button class=\"view-photo-btn p-2 bg-blue-100 rounded-md\" data-photo=\"${user.lastPhotoUrl}\" data-desc=\"${user.lastLocation || ''}\"><i data-lucide=\"image\" class=\"w-6 h-6 text-blue-600\"></i></button>` : ''}
-                                    ${user.lastLocation ? `<button class=\"view-map-btn p-2 bg-green-100 rounded-md\" data-lat=\"${user.lastLocation?.latitude || 0}\" data-lng=\"${user.lastLocation?.longitude || 0}\"><i data-lucide=\"map-pin\" class=\"w-6 h-6 text-green-600\"></i></button>` : ''}
-                                </div>
-                            </div>`;
-                    });
+                                    <div class=\"flex space-x-2\">
+                                        ${user.lastPhotoUrl ? `<button class=\"view-photo-btn p-2 bg-blue-100 rounded-md\" data-photo=\"${user.lastPhotoUrl}\" data-desc=\"${user.lastLocation || ''}\"><i data-lucide=\"image\" class=\"w-6 h-6 text-blue-600\"></i></button>` : ''}
+                                        ${user.lastLocation ? `<button class=\"view-map-btn p-2 bg-green-100 rounded-md\" data-lat=\"${user.lastLocation?.latitude || 0}\" data-lng=\"${user.lastLocation?.longitude || 0}\"><i data-lucide=\"map-pin\" class=\"w-6 h-6 text-green-600\"></i></button>` : ''}
+                                    </div>
+                                </div>`;
+                        });
+                        // 重新以最新 clockInRecords 更新每位使用者的時間（避免快照時序不同步）
+                        try {
+                            Promise.all(visibleUsersList.map(async (u) => {
+                                try {
+                                    const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+                                    const latestSnap = await getDocs(qLatest);
+                                    let dt = null;
+                                    if (!latestSnap.empty) {
+                                        const ts = latestSnap.docs[0].data().timestamp;
+                                        dt = ts?.toDate?.() ? ts.toDate() : (ts ? new Date(ts) : null);
+                                    }
+                                    const el = document.querySelector(`#clock-time-${u.id}`);
+                                    if (el) {
+                                        el.textContent = dt ? dt.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
+                                    }
+                                } catch (e) {
+                                    console.warn('載入使用者最新打卡失敗:', e);
+                                }
+                            }));
+                        } catch (e) {
+                            console.warn('更新最新打卡時間時發生錯誤:', e);
+                        }
+                    })();
                     // 綁定照片與地圖按鈕
                     document.querySelectorAll('#all-users-modal .view-photo-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {

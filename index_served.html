@@ -1061,8 +1061,7 @@
                         const locationText = user.clockInStatus === 'a??a?o' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
                         const statusText = getStatusDisplayText(user.clockInStatus || 'a?aa??a?!', locationText, user.dutyType);
                         const statusColor = getStatusColor(statusText);
-                        const clockInTime = user.lastClockInTime ? new Date(user.lastClockInTime.toDate()) : null;
-                        const timeFormatted = clockInTime ? clockInTime.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
+                        const timeFormatted = '讀取中...';
                         listEl.innerHTML += `
                             <div class=\"flex items-center justify-between bg-white p-3 rounded-md shadow-sm border\">
                                 <div class=\"flex items-center\">
@@ -1071,7 +1070,7 @@
                                         <span class=\"font-medium text-gray-700\">${user.name || user.displayName || 'a?aa??a??'}</span>
                                         <div class=\"flex items-center mt-1\">
                                             <span class=\"text-sm font-semibold ${statusColor} mr-2\">${statusText}</span>
-                                            <span class=\"text-xs text-gray-500\">${timeFormatted}</span>
+                                            <span class=\"text-xs text-gray-500\" id=\"clock-time-${user.id}\">${timeFormatted}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1081,6 +1080,28 @@
                                 </div>
                             </div>`;
                     });
+                    // 更新每位使用者的最新打卡時間
+                    try {
+                        Promise.all(visibleUsersList.map(async (u) => {
+                            try {
+                                const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+                                const latestSnap = await getDocs(qLatest);
+                                let dt = null;
+                                if (!latestSnap.empty) {
+                                    const ts = latestSnap.docs[0].data().timestamp;
+                                    dt = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+                                }
+                                const el = document.querySelector(`#clock-time-${u.id}`);
+                                if (el) {
+                                    el.textContent = dt ? dt.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'N/A';
+                                }
+                            } catch (e) {
+                                console.warn('載入使用者最新打卡失敗:', e);
+                            }
+                        }));
+                    } catch (e) {
+                        console.warn('更新最新打卡時間時發生錯誤:', e);
+                    }
                     // c??aR?c?��c??e??a?�Xa??a??e??
                     document.querySelectorAll('#all-users-modal .view-photo-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
