@@ -672,7 +672,8 @@
                             recs.forEach(r => {
                                 const rowClass = hasAnomalies ? 'bg-red-50' : '';
                                 const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : new Date());
-const statusText = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                                const locName = typeof r.locationName === 'string' ? r.locationName : (r.location?.address || null);
+                                const statusText = getStatusDisplayText(r.type || '未知', locName, r.dutyType || null);
                                 const statusColorClass = getStatusColor(statusText);
                                 html += `
                                     <tr class="${rowClass}">
@@ -885,7 +886,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     // 1) 上班中-辦公室 2) 返回-辦公室 3) 外出-項目-地點 4) 抵達-項目-地點
                     // 5) 離開-項目-地點 6) 請假中 7) 已下班 其餘置後
                     const statusPriority = (user) => {
-                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : (user.lastLocation?.address || null);
                         const display = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
                         // 請假中：臨時請假或當天有效的請假申請
                         let isLeave = (user.clockInStatus === '臨時請假') || (display.includes('請假'));
@@ -923,9 +924,9 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         if (tA.getTime() !== tB.getTime()) return tB - tA;
                         return a.name.localeCompare(b.name, 'zh-Hant');
                     }).forEach(user => {
-                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
-                        const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
-                        const statusColor = getStatusColor(statusText);
+                            const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : (user.lastLocation?.address || null);
+                            const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
+                            const statusColor = getStatusColor(statusText);
                         if (user.id === state.currentUser.uid) {
                             myStatusFound = true;
                             (async () => {
@@ -1045,7 +1046,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     
                     // 排序：自訂狀態優先級 + 最近更新時間（新至舊） + 姓名
                     const statusPriority = (user) => {
-                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                        const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : (user.lastLocation?.address || null);
                         const display = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
                         let isLeave = (user.clockInStatus === '臨時請假') || (display.includes('請假'));
                         if (!isLeave) {
@@ -1103,7 +1104,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                             if (tA.getTime() !== tB.getTime()) return tB - tA;
                             return a.name.localeCompare(b.name, 'zh-Hant');
                         }).forEach(user => {
-                            const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : user.lastLocation;
+                            const locationText = user.clockInStatus === '外出' && user.outboundLocation ? user.outboundLocation : (user.lastLocation?.address || null);
                             const statusText = getStatusDisplayText(user.clockInStatus || '未打卡', locationText, user.dutyType);
                             const statusColor = getStatusColor(statusText);
                             const clockInTime = latestMap[user.id];
@@ -3416,7 +3417,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     Promise.all(augmentedPromises).then((augmentedUsers) => {
                         // 排序對齊「所有同仁狀態」：狀態優先級 -> 最近更新時間(新→舊) -> 姓名
                         const statusPriority = (u) => {
-                            const display = u.__statusText || getStatusDisplayText(u.clockInStatus || '未打卡', (u.clockInStatus === '外出' && u.outboundLocation ? u.outboundLocation : u.lastLocation), u.dutyType);
+                        const display = u.__statusText || getStatusDisplayText(u.clockInStatus || '未打卡', (u.clockInStatus === '外出' && u.outboundLocation ? u.outboundLocation : (u.lastLocation?.address || null)), u.dutyType);
                             let isLeave = (u.clockInStatus === '臨時請假') || (display.includes('請假'));
                             if (!isLeave) {
                                 const leave = u.leaveStatus || '';
@@ -3462,12 +3463,13 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
 
                             const userElement = document.createElement('div');
                             userElement.className = `flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${!hasLocation ? 'opacity-50' : ''}`;
+                            const statusColorClass = getStatusColor(user.__statusText || '未打卡');
                             userElement.innerHTML = `
                                 <div class="flex items-center">
                                     <img src="${user.avatarUrl || `https://placehold.co/32x32/EFEFEF/333333?text=${(user.name || 'U').charAt(0)}`}" class="w-8 h-8 rounded-full mr-3 object-cover">
                                     <div>
                                         <p class="font-medium text-sm text-gray-800">${user.name || '未知用戶'}</p>
-                                        <p class="text-xs text-gray-500">${user.__statusText || '未打卡'}</p>
+                                        <p class="text-xs font-semibold ${statusColorClass}">${user.__statusText || '未打卡'}</p>
                                     </div>
                                 </div>
                                 <span class="text-xs text-gray-400">${user.__lastStatusTime ? '最近狀態時間：' + timeAgo(user.__lastStatusTime) : '無紀錄'}</span>
