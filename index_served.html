@@ -2367,17 +2367,22 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
             // a?��c?�Li??a?oa??c���e??a??e!�La�M2a??i??a?��a?��a??aR?c?�La??c??a??a?Ri??
             async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
-                const isAdmin = await checkAdminStatus();
+                const isAdmin = await (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false));
                 const container = document.getElementById(containerId);
                 const selectedDate = new Date(selectedDateStr);
-                const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                const startOfDay = new Date(selectedDate);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(selectedDate);
+                endOfDay.setHours(23, 59, 59, 999);
                 const recordsRef = collection(db, 'clockInRecords');
+                const { Timestamp } = window.__fs || {};
+                const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
+                const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                 let q;
                 if (selectedUserId === 'all') {
-                    q = query(recordsRef, where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                    q = query(recordsRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
                 } else {
-                    q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                    q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
                 }
 
                 container.innerHTML = `<div class="text-center p-4 text-gray-500">a-�Ga?�LeR�a??c���e??...</div>`;
@@ -2640,23 +2645,28 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 
                 function loadAttendanceRecords() {
                     const selectedDate = new Date(dateInput.value);
-                    const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                    const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                    const startOfDay = new Date(selectedDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(selectedDate);
+                    endOfDay.setHours(23, 59, 59, 999);
                     const selectedUserId = userSelect.value;
                     
                     const recordsRef = collection(db, "clockInRecords");
+                    const { Timestamp } = window.__fs || {};
+                    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
+                    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                     let q;
                     
                     if (selectedUserId === 'all') {
                         q = query(recordsRef, 
-                            where("timestamp", ">=", startOfDay),
-                            where("timestamp", "<=", endOfDay)
+                            where("timestamp", ">=", startTS),
+                            where("timestamp", "<=", endTS)
                         );
                     } else {
                         q = query(recordsRef, 
                             where("userId", "==", selectedUserId),
-                            where("timestamp", ">=", startOfDay),
-                            where("timestamp", "<=", endOfDay)
+                            where("timestamp", ">=", startTS),
+                            where("timestamp", "<=", endTS)
                         );
                     }
                     
@@ -3564,7 +3574,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 });
                 
                 // aa�Fa?�Dc?�La??a?��a?|c?ocR!c??a?!i??a|?a??a?��a??e!��c?ocR!c??a?!a??e??
-                checkAdminStatus().then(isAdmin => {
+                (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false)).then(isAdmin => {
                     if (isAdmin) {
                         document.getElementById('admin-overtime-section').style.display = 'block';
                         
@@ -3670,20 +3680,24 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                  });
                 
                 // aa�Fa?�DcR!c??a?!c?�a??c??e??a?ca??a?�M
-                async function checkAdminStatus() {
-                    try {
-                        const user = auth.currentUser;
-                        if (!user) return false;
-                        
-                        const userDoc = await getDoc(doc(db, 'users', user.uid));
-                        if (userDoc.exists()) {
-                            return userDoc.data().role === 'admin';
+                // 確保已存在全域 window.checkAdminStatus，避免重複定義
+                if (!window.checkAdminStatus) {
+                    window.checkAdminStatus = async function() {
+                        try {
+                            const auth = window.__auth; const db = window.__db; const { getDoc, doc } = window.__fs || {};
+                            if (!auth || !db || !getDoc || !doc) return false;
+                            const user = auth.currentUser;
+                            if (!user) return false;
+                            const userDoc = await getDoc(doc(db, 'users', user.uid));
+                            if (userDoc.exists()) {
+                                return userDoc.data().role === 'admin';
+                            }
+                            return false;
+                        } catch (error) {
+                            console.error('checkAdminStatus error:', error);
+                            return false;
                         }
-                        return false;
-                    } catch (error) {
-                        console.error('aa�Fa?�DcR!c??a?!c?�a??a?��a??:', error);
-                        return false;
-                    }
+                    };
                 }
             }
             

@@ -294,6 +294,21 @@
         };
         window.__authHelpers = { onAuthStateChanged };
 
+        // 全域管理員檢查函數（避免區域作用域造成未定義）
+        window.checkAdminStatus = async function() {
+            try {
+                const user = window.__auth?.currentUser;
+                if (!user) return false;
+                const db = window.__db; const { doc, getDoc } = window.__fs || {};
+                if (!db || !doc || !getDoc) return false;
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                return !!(userDoc.exists() && userDoc.data().role === 'admin');
+            } catch (error) {
+                console.warn('checkAdminStatus 失敗:', error);
+                return false;
+            }
+        };
+
         // Global State
         const state = {
             currentUser: null,
@@ -2160,8 +2175,16 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     endOfDay.setHours(23, 59, 59, 999);
                     
                     const recordsRef = collection(db, "clockInRecords");
-                    // 僅依使用者查詢，避免複合索引需求；日期在前端過濾
-                    const q = query(recordsRef, where("userId", "==", state.currentUser.uid));
+                    // Firestore 端日期範圍查詢以避免時區邊界誤差（保留前端過濾作為保險）
+                    const { Timestamp } = window.__fs || {};
+                    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
+                    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
+                    const q = query(
+                        recordsRef,
+                        where("userId", "==", state.currentUser.uid),
+                        where("timestamp", ">=", startTS),
+                        where("timestamp", "<=", endTS)
+                    );
 
                     const unsubscribe = onSnapshot(q, (querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
@@ -2192,9 +2215,9 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         filtered.forEach(record => {
                             const card = document.createElement('div');
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
-const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                            const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
                             const statusColor = getStatusColor(statusText);
-                            const isAdminPromise = checkAdminStatus();
+                            const isAdminPromise = (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false));
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
                                     <div>
@@ -2291,7 +2314,8 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         console.error("Error fetching records: ", error);
                         const recordsListEl = document.getElementById('records-list');
                         if (recordsListEl) {
-                             recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">讀取紀錄失敗。請確認您的 Firestore 安全規則是否正確。</div>`;
+                            const hint = (error?.code === 'failed-precondition') ? '可能需要建立複合索引（userId + timestamp）。' : '請確認 Firestore 規則與網路狀況。';
+                            recordsListEl.innerHTML = `<div class="text-center text-red-500 p-4">讀取紀錄失敗。${hint}</div>`;
                         }
                     });
 
@@ -2609,14 +2633,19 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
             async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
                 const container = document.getElementById(containerId);
                 const selectedDate = new Date(selectedDateStr);
-                const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                const startOfDay = new Date(selectedDate);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(selectedDate);
+                endOfDay.setHours(23, 59, 59, 999);
                 const recordsRef = collection(db, 'clockInRecords');
                 let q;
+                const { Timestamp } = window.__fs || {};
+                const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
+                const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                 if (selectedUserId === 'all') {
-                    q = query(recordsRef, where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                    q = query(recordsRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
                 } else {
-                    q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startOfDay), where('timestamp', '<=', endOfDay));
+                    q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
                 }
 
                 container.innerHTML = `<div class="text-center p-4 text-gray-500">正在讀取紀錄...</div>`;
@@ -2826,23 +2855,28 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 
                 function loadAttendanceRecords() {
                     const selectedDate = new Date(dateInput.value);
-                    const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-                    const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                    const startOfDay = new Date(selectedDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(selectedDate);
+                    endOfDay.setHours(23, 59, 59, 999);
                     const selectedUserId = userSelect.value;
                     
                     const recordsRef = collection(db, "clockInRecords");
                     let q;
+                    const { Timestamp } = window.__fs || {};
+                    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
+                    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                     
                     if (selectedUserId === 'all') {
                         q = query(recordsRef, 
-                            where("timestamp", ">=", startOfDay),
-                            where("timestamp", "<=", endOfDay)
+                            where("timestamp", ">=", startTS),
+                            where("timestamp", "<=", endTS)
                         );
                     } else {
                         q = query(recordsRef, 
                             where("userId", "==", selectedUserId),
-                            where("timestamp", ">=", startOfDay),
-                            where("timestamp", "<=", endOfDay)
+                            where("timestamp", ">=", startTS),
+                            where("timestamp", "<=", endTS)
                         );
                     }
                     
@@ -3851,7 +3885,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 });
                 
                 // 檢查用戶是否為管理員，如果是則顯示管理員功能
-                checkAdminStatus().then(isAdmin => {
+                (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false)).then(isAdmin => {
                     if (isAdmin) {
                         document.getElementById('admin-overtime-section').style.display = 'block';
                         
@@ -3956,22 +3990,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                      }
                  });
                 
-                // 檢查管理員狀態的輔助函數
-                async function checkAdminStatus() {
-                    try {
-                        const user = auth.currentUser;
-                        if (!user) return false;
-                        
-                        const userDoc = await getDoc(doc(db, 'users', user.uid));
-                        if (userDoc.exists()) {
-                            return userDoc.data().role === 'admin';
-                        }
-                        return false;
-                    } catch (error) {
-                        console.error('檢查管理員狀態失敗:', error);
-                        return false;
-                    }
-                }
+                // 全域函數已定義於檔案頂端，這裡不再重複宣告
             }
             
             function renderSettingsLocation(container) {
