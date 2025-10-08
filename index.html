@@ -3620,7 +3620,7 @@
                         <button data-subtab="rules" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'rules' ? 'active' : ''}">計點規則</button>
                         <button data-subtab="general" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'general' ? 'active' : ''}">一般設定</button>
                         <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">定位位置</button>
-                        <button data-subtab="holidays" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'holidays' ? 'active' : ''}">休假日</button>
+                        <button data-subtab="workdays" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'workdays' ? 'active' : ''}">上班設定</button>
                         <button data-subtab="group" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'group' ? 'active' : ''}">群組設定</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
@@ -3634,8 +3634,8 @@
                     renderSettingsGeneral(subPageContent);
                 } else if (subPage === 'location') {
                     renderSettingsLocation(subPageContent);
-                } else if (subPage === 'holidays') {
-                    renderSettingsHolidays(subPageContent);
+                } else if (subPage === 'workdays') {
+                    renderSettingsWorkdays(subPageContent);
                 } else if (subPage === 'group') {
                     renderSettingsGroup(subPageContent);
                 }
@@ -4328,180 +4328,171 @@
                 });
             }
             
-            function renderSettingsHolidays(container) {
+            function renderSettingsWorkdays(container) {
                 container.innerHTML = `
                     <div class="p-4">
                         <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
-                            <h3 class="font-bold text-lg mb-4">上班時間設定</h3>
-                            <div class="grid grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label for="work-start-time" class="block text-sm font-medium text-gray-700">上班時間</label>
-                                    <input type="time" id="work-start-time" class="w-full mt-1 px-3 py-2 border rounded-md">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="font-bold text-lg">上班設定（每人每月）</h3>
+                                <div class="flex items-center space-x-2">
+                                    <button id="prev-month" class="bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300">
+                                        <i data-lucide="chevrons-left" class="w-4 h-4"></i>
+                                    </button>
+                                    <span id="workdays-month-label" class="font-semibold"></span>
+                                    <button id="next-month" class="bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300">
+                                        <i data-lucide="chevrons-right" class="w-4 h-4"></i>
+                                    </button>
                                 </div>
-                                <div>
-                                    <label for="work-end-time" class="block text-sm font-medium text-gray-700">下班時間</label>
-                                    <input type="time" id="work-end-time" class="w-full mt-1 px-3 py-2 border rounded-md">
-                                </div>
                             </div>
-                            <div class="flex items-center justify-between">
-                                <label for="weekend-is-holiday" class="text-gray-700">週末為休假日</label>
-                                <label class="switch">
-                                    <input type="checkbox" id="weekend-is-holiday" checked>
-                                    <span class="slider round"></span>
-                                </label>
-                            </div>
+                            <p class="text-sm text-gray-600 mb-3">為目前登入者設定指定月份的上班日。</p>
+                            <div id="workdays-grid" class="grid grid-cols-7 gap-2"></div>
                         </div>
-                        
-                        <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
-                            <h3 class="font-bold text-lg mb-4">休假日設定</h3>
-                            <div class="flex items-center space-x-2 mb-4">
-                                <input type="date" id="holiday-date" class="flex-grow px-3 py-2 border rounded-md">
-                                <button id="add-holiday-btn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md hover:bg-gray-300 flex items-center justify-center">
-                                    <i data-lucide="plus" class="w-4 h-4"></i>
-                                </button>
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-2">
+                                <button id="select-weekdays" class="bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200">選取週一至週五</button>
+                                <button id="clear-selection" class="bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200">清除選取</button>
                             </div>
-                            <div id="holidays-list" class="space-y-2 max-h-[300px] overflow-y-auto">
-                                <!-- 休假日列表會動態添加在這裡 -->
-                                <p class="text-gray-500 text-center">讀取中...</p>
-                            </div>
-                        </div>
-                        
-                        <button id="save-holiday-settings" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
-                            <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存設定
-                        </button>
-                    </div>`;
-                
-                lucide.createIcons();
-                
-                // 從 Firebase 讀取設定
-                const settingsRef = doc(db, "settings", "holidays");
-                getDoc(settingsRef).then((docSnap) => {
-                    if (docSnap.exists()) {
-                        const settings = docSnap.data();
-                        document.getElementById('work-start-time').value = settings.workStartTime || '09:00';
-                        document.getElementById('work-end-time').value = settings.workEndTime || '18:00';
-                        document.getElementById('weekend-is-holiday').checked = settings.weekendIsHoliday !== false;
-                        
-                        // 渲染休假日列表
-                        renderHolidaysList(settings.holidays || []);
-                    } else {
-                        // 預設值
-                        document.getElementById('work-start-time').value = '09:00';
-                        document.getElementById('work-end-time').value = '18:00';
-                        document.getElementById('weekend-is-holiday').checked = true;
-                        renderHolidaysList([]);
-                    }
-                }).catch(error => {
-                    console.error("Error getting holiday settings:", error);
-                    showToast("無法讀取休假日設定", true);
-                    renderHolidaysList([]);
-                });
-                
-                // 渲染休假日列表
-                function renderHolidaysList(holidays) {
-                    const container = document.getElementById('holidays-list');
-                    container.innerHTML = '';
-                    
-                    if (holidays.length === 0) {
-                        container.innerHTML = '<p class="text-gray-500 text-center">尚未設定休假日</p>';
-                        return;
-                    }
-                    
-                    // 排序休假日
-                    holidays.sort((a, b) => new Date(a) - new Date(b));
-                    
-                    holidays.forEach((holiday, index) => {
-                        const date = new Date(holiday);
-                        const formattedDate = date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-                        
-                        const holidayEl = document.createElement('div');
-                        holidayEl.className = 'flex items-center justify-between bg-gray-50 p-2 rounded-md border';
-                        holidayEl.innerHTML = `
-                            <span>${formattedDate}</span>
-                            <button class="delete-holiday-btn text-red-500" data-index="${index}">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            <button id="save-workdays" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 flex items-center justify-center">
+                                <i data-lucide="save" class="w-4 h-4 mr-2"></i>儲存本月上班日
                             </button>
-                        `;
-                        container.appendChild(holidayEl);
-                    });
-                    
-                    lucide.createIcons();
-                    
-                    // 刪除休假日按鈕事件
-                    document.querySelectorAll('.delete-holiday-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const index = parseInt(e.currentTarget.dataset.index);
-                            const settingsRef = doc(db, "settings", "holidays");
-                            getDoc(settingsRef).then((docSnap) => {
-                                if (docSnap.exists()) {
-                                    const settings = docSnap.data();
-                                    const holidays = settings.holidays || [];
-                                    holidays.splice(index, 1);
-                                    renderHolidaysList(holidays);
-                                }
-                            });
-                        });
-                    });
+                        </div>
+                    </div>`;
+
+                lucide.createIcons();
+
+                const { doc, getDoc, setDoc, serverTimestamp } = window.__fs || {};
+                const db = window.__db;
+                const user = window.__auth?.currentUser;
+                if (!user) {
+                    showToast('請先登入', true);
+                    return;
                 }
-                
-                // 新增休假日按鈕事件
-                document.getElementById('add-holiday-btn').addEventListener('click', () => {
-                    const holidayDate = document.getElementById('holiday-date').value;
-                    if (!holidayDate) {
-                        showToast("請選擇日期", true);
-                        return;
+
+                let targetYear, targetMonth; // 0-based month
+                const gridEl = document.getElementById('workdays-grid');
+                const labelEl = document.getElementById('workdays-month-label');
+
+                function setMonth(date) {
+                    targetYear = date.getFullYear();
+                    targetMonth = date.getMonth();
+                    labelEl.textContent = `${targetYear}年${String(targetMonth + 1).padStart(2,'0')}月`;
+                    renderMonthGrid();
+                    loadWorkdays();
+                }
+
+                function daysInMonth(y, m0) {
+                    return new Date(y, m0 + 1, 0).getDate();
+                }
+
+                function renderMonthGrid(selectedDays = new Set()) {
+                    gridEl.innerHTML = '';
+                    // Weekday headers
+                    const weekdays = ['日','一','二','三','四','五','六'];
+                    weekdays.forEach(w => {
+                        const h = document.createElement('div');
+                        h.className = 'text-center text-gray-500 text-sm';
+                        h.textContent = w;
+                        gridEl.appendChild(h);
+                    });
+                    // First day offset
+                    const firstDay = new Date(targetYear, targetMonth, 1).getDay();
+                    for (let i = 0; i < firstDay; i++) {
+                        const empty = document.createElement('div');
+                        gridEl.appendChild(empty);
                     }
-                    
-                    const settingsRef = doc(db, "settings", "holidays");
-                    getDoc(settingsRef).then((docSnap) => {
-                        const settings = docSnap.exists() ? docSnap.data() : {};
-                        const holidays = settings.holidays || [];
-                        
-                        // 檢查是否已存在
-                        if (holidays.includes(holidayDate)) {
-                            showToast("此日期已設為休假日", true);
-                            return;
+                    const dim = daysInMonth(targetYear, targetMonth);
+                    for (let d = 1; d <= dim; d++) {
+                        const cell = document.createElement('button');
+                        cell.className = 'border rounded p-2 text-center hover:bg-gray-50';
+                        cell.dataset.day = String(d);
+                        const dow = new Date(targetYear, targetMonth, d).getDay();
+                        const isSelected = selectedDays.has(d);
+                        cell.innerHTML = `
+                            <div class="text-xs text-gray-500">${['日','一','二','三','四','五','六'][dow]}</div>
+                            <div class="text-lg">${d}</div>
+                        `;
+                        if (isSelected) {
+                            cell.classList.add('bg-green-100','border-green-400');
                         }
-                        
-                        holidays.push(holidayDate);
-                        renderHolidaysList(holidays);
-                        document.getElementById('holiday-date').value = '';
+                        cell.addEventListener('click', () => {
+                            cell.classList.toggle('bg-green-100');
+                            cell.classList.toggle('border-green-400');
+                        });
+                        gridEl.appendChild(cell);
+                    }
+                }
+
+                async function loadWorkdays() {
+                    try {
+                        const ymId = `${targetYear}-${String(targetMonth + 1).padStart(2,'0')}`;
+                        const ref = doc(db, 'users', user.uid, 'workdays', ymId);
+                        const snap = await getDoc(ref);
+                        const selected = new Set();
+                        if (snap.exists()) {
+                            const data = snap.data();
+                            (data.days || []).forEach(n => selected.add(Number(n)));
+                        }
+                        renderMonthGrid(selected);
+                    } catch (err) {
+                        console.error('載入上班日設定失敗:', err);
+                        renderMonthGrid(new Set());
+                        showToast('載入上班日設定失敗', true);
+                    }
+                }
+
+                function getSelectedDays() {
+                    const selected = [];
+                    gridEl.querySelectorAll('button[data-day]').forEach(btn => {
+                        if (btn.classList.contains('bg-green-100')) {
+                            selected.push(Number(btn.dataset.day));
+                        }
+                    });
+                    return selected;
+                }
+
+                document.getElementById('prev-month').addEventListener('click', () => {
+                    const d = new Date(targetYear, targetMonth - 1, 1);
+                    setMonth(d);
+                });
+                document.getElementById('next-month').addEventListener('click', () => {
+                    const d = new Date(targetYear, targetMonth + 1, 1);
+                    setMonth(d);
+                });
+                document.getElementById('select-weekdays').addEventListener('click', () => {
+                    // Select Mon-Fri
+                    gridEl.querySelectorAll('button[data-day]').forEach(btn => {
+                        const day = Number(btn.dataset.day);
+                        const dow = new Date(targetYear, targetMonth, day).getDay();
+                        if (dow >= 1 && dow <= 5) {
+                            btn.classList.add('bg-green-100','border-green-400');
+                        } else {
+                            btn.classList.remove('bg-green-100','border-green-400');
+                        }
                     });
                 });
-                
-                // 儲存設定
-                document.getElementById('save-holiday-settings').addEventListener('click', async () => {
+                document.getElementById('clear-selection').addEventListener('click', () => {
+                    gridEl.querySelectorAll('button[data-day]').forEach(btn => {
+                        btn.classList.remove('bg-green-100','border-green-400');
+                    });
+                });
+
+                document.getElementById('save-workdays').addEventListener('click', async () => {
                     try {
                         showLoading(true);
-                        const workStartTime = document.getElementById('work-start-time').value;
-                        const workEndTime = document.getElementById('work-end-time').value;
-                        const weekendIsHoliday = document.getElementById('weekend-is-holiday').checked;
-                        
-                        // 收集休假日資料
-                        const holidays = [];
-                        const settingsRef = doc(db, "settings", "holidays");
-                        const docSnap = await getDoc(settingsRef);
-                        if (docSnap.exists()) {
-                            const settings = docSnap.data();
-                            holidays.push(...(settings.holidays || []));
-                        }
-                        
-                        await setDoc(doc(db, "settings", "holidays"), {
-                            workStartTime,
-                            workEndTime,
-                            weekendIsHoliday,
-                            holidays,
-                            updatedAt: serverTimestamp()
-                        }, { merge: true });
-                        
-                        showToast("休假日設定已儲存");
-                    } catch (error) {
-                        console.error("Error saving holiday settings:", error);
-                        showToast("儲存休假日設定失敗", true);
+                        const days = getSelectedDays();
+                        const ymId = `${targetYear}-${String(targetMonth + 1).padStart(2,'0')}`;
+                        const ref = doc(db, 'users', user.uid, 'workdays', ymId);
+                        await setDoc(ref, { days, updatedAt: serverTimestamp() }, { merge: true });
+                        showToast('本月上班日已儲存');
+                    } catch (err) {
+                        console.error('儲存上班日失敗:', err);
+                        showToast('儲存上班日失敗', true);
                     } finally {
                         showLoading(false);
                     }
                 });
+
+                setMonth(new Date());
             }
             
             function renderSettingsRules(container) {
