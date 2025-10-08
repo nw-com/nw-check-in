@@ -22,7 +22,7 @@
     <style>
         body {
             font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            background-color: ##1f2937; /* 深灰色背景 */
+            background-color: #1f2937; /* 深灰色背景 */
         }
         .main-container {
             width: 400px;
@@ -2217,7 +2217,6 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                             card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
                             const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
                             const statusColor = getStatusColor(statusText);
-                            const isAdminPromise = (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false));
                             card.innerHTML = `
                                 <div class="flex justify-between items-start">
                                     <div>
@@ -2227,24 +2226,6 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                     <div class="flex space-x-2">
                                         <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
                                             <i data-lucide="map-pin"></i> 地圖
-                                        </button>
-                                        <button 
-                                            class="edit-record-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm"
-                                            data-id="${record.id}"
-                                            data-type="${record.type || ''}"
-                                            data-time="${(record.timestamp?.toDate?.() || new Date()).toISOString()}"
-                                            data-lat="${record.location?.latitude ?? ''}"
-                                            data-lng="${record.location?.longitude ?? ''}"
-                                            data-location-name="${record.locationName || ''}"
-                                            data-duty-type="${record.dutyType || ''}"
-                                        >
-                                            <i data-lucide="pencil"></i> 編輯
-                                        </button>
-                                        <button 
-                                            class="delete-record-btn bg-red-500 text-white px-2 py-1 rounded text-sm"
-                                            data-id="${record.id}"
-                                        >
-                                            <i data-lucide="trash"></i> 刪除
                                         </button>
                                     </div>
                                 </div>
@@ -2257,9 +2238,6 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                 </div>
                             `;
                             recordsListEl.appendChild(card);
-                            isAdminPromise.then(isAdmin => {
-                                if (!isAdmin) card.querySelectorAll('.edit-record-btn, .delete-record-btn').forEach(btn => btn.remove());
-                            });
                         });
                          
                         lucide.createIcons();
@@ -2278,36 +2256,6 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                 const photos = JSON.parse(e.currentTarget.dataset.photos);
                                 const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
                                 openPhotoModal(photos, descriptions);
-                            });
-                        });
-                        document.querySelectorAll('.edit-record-btn').forEach(btn => {
-                            btn.addEventListener('click', (e) => {
-                                const d = e.currentTarget.dataset;
-                                openEditRecordModal({
-                                    id: d.id,
-                                    type: d.type,
-                                    timeISO: d.time,
-                                    lat: d.lat ? parseFloat(d.lat) : null,
-                                    lng: d.lng ? parseFloat(d.lng) : null,
-                                    locationName: d.locationName || '',
-                                    dutyType: d.dutyType || ''
-                                });
-                            });
-                        });
-                        document.querySelectorAll('.delete-record-btn').forEach(btn => {
-                            btn.addEventListener('click', async (e) => {
-                                const id = e.currentTarget.dataset.id;
-                                if (!id) return;
-                                const ok = window.confirm('確認刪除此筆出勤紀錄？此操作無法復原');
-                                if (!ok) return;
-                                try {
-                                    const db = window.__db; const { deleteDoc, doc } = window.__fs;
-                                    await deleteDoc(doc(db, 'clockInRecords', id));
-                                    showToast('刪除成功');
-                                } catch (err) {
-                                    console.error('delete clockInRecord error', err);
-                                    showToast('刪除失敗：請檢查權限或網路', true);
-                                }
                             });
                         });
                     }, (error) => {
@@ -2685,7 +2633,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                     </div>
                                     <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
                                 </div>
-                                <div class="flex space-x-2">
+                                <div class="flex space-x-2 items-start">
                                     ${record.location ? `
                                         <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
                                             data-lat="${record.location.latitude}" 
@@ -2693,6 +2641,23 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                             <i data-lucide="map-pin"></i> 地圖
                                         </button>
                                     ` : ''}
+                                    <!-- Admin controls: edit/delete -->
+                                    <span class="admin-controls hidden" data-record-id="${record.id}" data-record='${JSON.stringify({
+                                        id: record.id,
+                                        type: record.type,
+                                        timeISO: (record.timestamp?.toDate?.() || new Date()).toISOString(),
+                                        lat: record.location?.latitude ?? null,
+                                        lng: record.location?.longitude ?? null,
+                                        locationName: record.locationName || '',
+                                        dutyType: record.dutyType || ''
+                                    })}'>
+                                        <button class="edit-record-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm">
+                                            <i data-lucide="pencil"></i> 編輯
+                                        </button>
+                                        <button class="delete-record-btn bg-red-600 text-white px-2 py-1 rounded text-sm">
+                                            <i data-lucide="trash-2"></i> 刪除
+                                        </button>
+                                    </span>
                                 </div>
                             </div>
                             <div class="mt-2 flex space-x-2 overflow-x-auto">
@@ -2721,6 +2686,46 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         const photos = JSON.parse(e.currentTarget.dataset.photos);
                         const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
                         openPhotoGalleryModal(photos, descriptions);
+                    });
+                });
+
+                // 顯示並綁定管理員控制按鈕
+                (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false)).then(isAdmin => {
+                    if (!isAdmin) return;
+                    container.querySelectorAll('.admin-controls').forEach(ctrl => ctrl.classList.remove('hidden'));
+                    container.querySelectorAll('.edit-record-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            try {
+                                const parent = e.currentTarget.closest('.admin-controls');
+                                const recordData = JSON.parse(parent.dataset.record);
+                                openEditRecordModal(recordData);
+                            } catch (err) {
+                                console.error('openEditRecordModal parse error', err);
+                                showToast('載入紀錄失敗', true);
+                            }
+                        });
+                    });
+                    container.querySelectorAll('.delete-record-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            try {
+                                const parent = e.currentTarget.closest('.admin-controls');
+                                const recordId = parent.dataset.recordId;
+                                if (!recordId) return;
+                                const ok = confirm('確定要刪除此出勤紀錄？此操作無法復原。');
+                                if (!ok) return;
+                                const { doc, deleteDoc } = window.__fs;
+                                const db = window.__db;
+                                await deleteDoc(doc(db, 'clockInRecords', recordId));
+                                showToast('刪除成功');
+                                // 重新載入列表
+                                const selectedUserId = document.getElementById('user-select')?.value || 'all';
+                                const selectedDateStr = document.getElementById('record-date')?.value || new Date().toISOString().split('T')[0];
+                                await renderAttendanceRecordsList('attendance-records-list', selectedUserId, selectedDateStr);
+                            } catch (err) {
+                                console.error('delete clockInRecord error', err);
+                                showToast('刪除失敗：請檢查權限', true);
+                            }
+                        });
                     });
                 });
             }
@@ -2923,7 +2928,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                             </div>
                                             <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
                                         </div>
-                                        <div class="flex space-x-2">
+                                        <div class="flex space-x-2 items-start">
                                             ${record.location ? `
                                                 <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
                                                     data-lat="${record.location.latitude}" 
@@ -2931,6 +2936,23 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                                     <i data-lucide="map-pin"></i> 地圖
                                                 </button>
                                             ` : ''}
+                                            <!-- Admin controls: edit/delete -->
+                                            <span class="admin-controls hidden" data-record-id="${record.id}" data-record='${JSON.stringify({
+                                                id: record.id,
+                                                type: record.type,
+                                                timeISO: (record.timestamp?.toDate?.() || new Date()).toISOString(),
+                                                lat: record.location?.latitude ?? null,
+                                                lng: record.location?.longitude ?? null,
+                                                locationName: record.locationName || '',
+                                                dutyType: record.dutyType || ''
+                                            })}'>
+                                                <button class="edit-record-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm">
+                                                    <i data-lucide="pencil"></i> 編輯
+                                                </button>
+                                                <button class="delete-record-btn bg-red-600 text-white px-2 py-1 rounded text-sm">
+                                                    <i data-lucide="trash-2"></i> 刪除
+                                                </button>
+                                            </span>
                                         </div>
                                     </div>
                                     <div class="mt-2 flex space-x-2 overflow-x-auto">
@@ -2963,6 +2985,43 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                     const photos = JSON.parse(e.currentTarget.dataset.photos);
                                     const descriptions = JSON.parse(e.currentTarget.dataset.descriptions);
                                     openPhotoModal(photos, descriptions);
+                                });
+                            });
+
+                            // 顯示並綁定管理員控制按鈕
+                            (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false)).then(isAdmin => {
+                                if (!isAdmin) return;
+                                recordsList.querySelectorAll('.admin-controls').forEach(ctrl => ctrl.classList.remove('hidden'));
+                                recordsList.querySelectorAll('.edit-record-btn').forEach(btn => {
+                                    btn.addEventListener('click', (e) => {
+                                        try {
+                                            const parent = e.currentTarget.closest('.admin-controls');
+                                            const recordData = JSON.parse(parent.dataset.record);
+                                            openEditRecordModal(recordData);
+                                        } catch (err) {
+                                            console.error('openEditRecordModal parse error', err);
+                                            showToast('載入紀錄失敗', true);
+                                        }
+                                    });
+                                });
+                                recordsList.querySelectorAll('.delete-record-btn').forEach(btn => {
+                                    btn.addEventListener('click', async (e) => {
+                                        try {
+                                            const parent = e.currentTarget.closest('.admin-controls');
+                                            const recordId = parent.dataset.recordId;
+                                            if (!recordId) return;
+                                            const ok = confirm('確定要刪除此出勤紀錄？此操作無法復原。');
+                                            if (!ok) return;
+                                            const { doc, deleteDoc } = window.__fs;
+                                            const db = window.__db;
+                                            await deleteDoc(doc(db, 'clockInRecords', recordId));
+                                            showToast('刪除成功');
+                                            loadAttendanceRecords();
+                                        } catch (err) {
+                                            console.error('delete clockInRecord error', err);
+                                            showToast('刪除失敗：請檢查權限', true);
+                                        }
+                                    });
                                 });
                             });
                         });
@@ -5246,7 +5305,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                 const modalHTML = `
                     <div id="${modalId}" class="modal-backdrop" style="z-index: 60;">
                         <div class="modal-content w-[90%] max-w-md bg-black rounded-lg shadow-xl flex flex-col p-4 text-white">
-                            <video id="avatar-video" playsinline autoplay class="w-full h-auto rounded-lg"></video>
+                            <video id="avatar-video" playsinline autoplay muted class="w-full h-auto rounded-lg"></video>
                             <canvas id="avatar-canvas" class="hidden"></canvas>
                             <div class="flex justify-center mt-4">
                                 <button id="avatar-capture-btn" class="w-16 h-16 bg-white rounded-full border-4 border-gray-500"></button>
@@ -5262,7 +5321,11 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
                     .then(stream => {
                         videoStream = stream;
+                        video.muted = true;
                         video.srcObject = stream;
+                        Promise.resolve(video.play()).catch(err => {
+                            console.warn("avatar video.play() failed:", err);
+                        });
                     }).catch(err => {
                         showToast("無法開啟相機", true);
                         close();
@@ -5301,7 +5364,7 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                     <div id="${modalId}" class="modal-backdrop">
                         <div class="modal-content w-[390px] h-[730px] bg-black rounded-2xl shadow-xl flex flex-col p-4 text-white">
                             <div id="camera-view" class="flex-grow relative flex items-center justify-center">
-                                <video id="camera-video" playsinline autoplay class="w-full h-full object-cover rounded-lg"></video>
+                                <video id="camera-video" playsinline autoplay muted class="w-full h-full object-cover rounded-lg"></video>
                                 <canvas id="camera-canvas" class="hidden"></canvas>
                                 <div id="camera-loader" class="absolute inset-0 flex items-center justify-center bg-black/50"><div class="loader"></div></div>
                             </div>
@@ -5345,7 +5408,11 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
                     .then(stream => {
                         videoStream = stream;
+                        video.muted = true;
                         video.srcObject = stream;
+                        Promise.resolve(video.play()).catch(err => {
+                            console.warn("camera video.play() failed:", err);
+                        });
                         document.getElementById('camera-loader').classList.add('hide');
                         
                         lucide.createIcons();
@@ -5363,7 +5430,9 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                 });
                                 
                                 videoStream = newStream;
+                                video.muted = true;
                                 video.srcObject = newStream;
+                                try { await Promise.resolve(video.play()); } catch (e) { console.warn("camera switch video.play() failed:", e); }
                                 document.getElementById('camera-loader').classList.add('hide');
                             } catch (error) {
                                 console.error("切換相機失敗:", error);

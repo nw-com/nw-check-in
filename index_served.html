@@ -4840,7 +4840,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 const modalHTML = `
                     <div id="${modalId}" class="modal-backdrop" style="z-index: 60;">
                         <div class="modal-content w-[90%] max-w-md bg-black rounded-lg shadow-xl flex flex-col p-4 text-white">
-                            <video id="avatar-video" playsinline autoplay class="w-full h-auto rounded-lg"></video>
+                            <video id="avatar-video" playsinline autoplay muted class="w-full h-auto rounded-lg"></video>
                             <canvas id="avatar-canvas" class="hidden"></canvas>
                             <div class="flex justify-center mt-4">
                                 <button id="avatar-capture-btn" class="w-16 h-16 bg-white rounded-full border-4 border-gray-500"></button>
@@ -4856,7 +4856,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
                     .then(stream => {
                         videoStream = stream;
+                        video.muted = true;
                         video.srcObject = stream;
+                        Promise.resolve(video.play()).catch(() => {});
                     }).catch(err => {
                         showToast("c?!a3?e??a??c?�Mac?", true);
                         close();
@@ -4895,7 +4897,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     <div id="${modalId}" class="modal-backdrop">
                         <div class="modal-content w-[390px] h-[730px] bg-black rounded-2xl shadow-xl flex flex-col p-4 text-white">
                             <div id="camera-view" class="flex-grow relative flex items-center justify-center">
-                                <video id="camera-video" playsinline autoplay class="w-full h-full object-cover rounded-lg"></video>
+                                <video id="camera-video" playsinline autoplay muted class="w-full h-full object-cover rounded-lg"></video>
                                 <canvas id="camera-canvas" class="hidden"></canvas>
                                 <div id="camera-loader" class="absolute inset-0 flex items-center justify-center bg-black/50"><div class="loader"></div></div>
                             </div>
@@ -4939,7 +4941,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
                     .then(stream => {
                         videoStream = stream;
+                        video.muted = true;
                         video.srcObject = stream;
+                        Promise.resolve(video.play()).catch(() => {});
                         document.getElementById('camera-loader').classList.add('hide');
                         
                         lucide.createIcons();
@@ -4957,7 +4961,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 });
                                 
                                 videoStream = newStream;
+                                video.muted = true;
                                 video.srcObject = newStream;
+                                try { await Promise.resolve(video.play()); } catch {}
                                 document.getElementById('camera-loader').classList.add('hide');
                             } catch (error) {
                                 console.error("a??a??c?�Mac?a?��a??:", error);
