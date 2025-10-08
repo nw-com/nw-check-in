@@ -2796,6 +2796,10 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 <label for="leave-date-filter" class="text-sm font-medium">a?�Da??:</label>
                                 <input type="date" id="leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="">
                             </div>
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="leave-show-deleted" class="rounded" />
+                                <span class="text-sm font-medium">a?�Xa??e??a��?</span>
+                            </label>
                             <button id="leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
                                 <i data-lucide="search" class="w-4 h-4 mr-1"></i>a??a�X?
                             </button>
@@ -2841,12 +2845,37 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 const statusFilter = document.getElementById('leave-status-filter');
                 const dateFilter = document.getElementById('leave-date-filter');
                 const searchBtn = document.getElementById('leave-search-btn');
-                
-                // a??a��?a??e??a?�Ma??
-                loadLeaveRecords();
+                const showDeletedChk = document.getElementById('leave-show-deleted');
+
+                // a�Pa?��?Firestore e??a??
+                const db = window.__db; 
+                const { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, serverTimestamp } = window.__fs;
+
+                // a?�L?e??c?�La??a?|a??e??a?�Ma??
+                let isAdmin = false;
+                (async () => {
+                    try {
+                        const uid = window.__auth?.currentUser?.uid;
+                        if (uid) {
+                            const userSnap = await getDoc(doc(db, 'users', uid));
+                            if (userSnap.exists()) {
+                                const role = userSnap.data().role;
+                                isAdmin = role === 'admin';
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('a?�L?e??c?�La??a??e�L?', err);
+                    } finally {
+                        loadLeaveRecords();
+                    }
+                })();
                 
                 // a�P?a??a??a�X?a??e??ao?a??
                 searchBtn.addEventListener('click', () => {
+                    loadLeaveRecords();
+                });
+                // a?�Xa??e??a��?a?�e??
+                showDeletedChk.addEventListener('change', () => {
                     loadLeaveRecords();
                 });
                 
@@ -2872,7 +2901,6 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     const date = dateFilter.value;
                     
                     // a��?a?oa?�Dec�F
-                    const db = window.__db; const { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, serverTimestamp } = window.__fs;
                     let leavesQuery = collection(db, 'leaves');
                     
                     // a|?a??e?�Ma??ao?c?1aR?c?�a??
@@ -2908,6 +2936,12 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         querySnapshot.forEach((docSnap) => {
                             const leave = docSnap.data();
                             const leaveId = docSnap.id;
+                            const isDeleted = !!leave.deleted;
+
+                            // a?��a?�Xa??e??a��?a??e??a?�L?a?�e?? deleted e??a??
+                            if (!showDeletedChk.checked && isDeleted) {
+                                return;
+                            }
                             
                             // a|?a??e?�Ma??ao?a?�Da??i??aa�Fa?�De??a??a??e??a?��a?|a?�La?�e?�Ma?�Da??c��?a??a?��
                             if (selectedDate && nextDay) {
@@ -2945,6 +2979,26 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             
                             const row = document.createElement('tr');
                             row.className = 'hover:bg-gray-50';
+                            
+                            let actionButtons = '';
+                            if (leave.status === 'pending') {
+                                actionButtons += `
+                                    <button data-leave-id="${leaveId}" data-action="approve" class="text-green-600 hover:text-green-900 mr-3">
+                                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                                    </button>
+                                    <button data-leave-id="${leaveId}" data-action="reject" class="text-red-600 hover:text-red-900">
+                                        <i data-lucide="x-circle" class="w-5 h-5"></i>
+                                    </button>
+                                `;
+                            }
+                            if (isAdmin) {
+                                actionButtons += `
+                                    <button data-leave-id="${leaveId}" data-action="${isDeleted ? 'restore' : 'delete'}" class="text-gray-600 hover:text-gray-900 ml-3">
+                                        <i data-lucide="${isDeleted ? 'rotate-ccw' : 'trash-2'}" class="w-5 h-5"></i>
+                                    </button>
+                                `;
+                            }
+                            
                             row.innerHTML = `
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
@@ -2963,16 +3017,10 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     ${statusBadge}
+                                    ${isDeleted ? '<span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">a��?e??a��?</span>' : ''}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    ${leave.status === 'pending' ? `
-                                        <button data-leave-id="${leaveId}" data-action="approve" class="text-green-600 hover:text-green-900 mr-3">
-                                            <i data-lucide="check-circle" class="w-5 h-5"></i>
-                                        </button>
-                                        <button data-leave-id="${leaveId}" data-action="reject" class="text-red-600 hover:text-red-900">
-                                            <i data-lucide="x-circle" class="w-5 h-5"></i>
-                                        </button>
-                                    ` : ''}
+                                    ${actionButtons}
                                 </td>
                             `;
                             
@@ -2986,7 +3034,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             noRecordsMsg.classList.remove('hidden');
                         }
                         
-                        // a�P?a??a��ca?�Ma??e??ao?a??
+                        // a�P?a??a��ca?�Ma??/a��?e??a��?/a?�Xa??a��?e??a?�e??
                         document.querySelectorAll('[data-leave-id]').forEach(btn => {
                             btn.addEventListener('click', async (e) => {
                                 const leaveId = e.currentTarget.dataset.leaveId;
@@ -3004,19 +3052,31 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                     const leaveData = leaveDocSnap.data();
                                     const userId = leaveData.userId;
                                     
-                                    // a?��a?�Xe??a??e�L?e??c?�a??
-                                    await updateDoc(doc(db, 'leaves', leaveId), {
-                                        status: action === 'approve' ? 'approved' : 'rejected',
-                                        reviewedAt: serverTimestamp(),
-                                        reviewedBy: window.__auth?.currentUser?.uid || ''
-                                    });
-                                    
-                                    // a|?a??a?�Ma??i??a?��a?�Xc?�La??c?�a??
-                                    if (action === 'approve') {
-                                        await updateDoc(doc(db, 'users', userId), { leaveStatus: 'approved' });
+                                    if (action === 'approve' || action === 'reject') {
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            status: action === 'approve' ? 'approved' : 'rejected',
+                                            reviewedAt: serverTimestamp(),
+                                            reviewedBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        if (action === 'approve') {
+                                            await updateDoc(doc(db, 'users', userId), { leaveStatus: 'approved' });
+                                        }
+                                        showToast(`a�P2${action === 'approve' ? 'a?�Ma??' : 'a??c�g?'}e??a??c?3e??`);
+                                    } else if (action === 'delete') {
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            deleted: true,
+                                            deletedAt: serverTimestamp(),
+                                            deletedBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        showToast('a?�Xa??e??a��?');
+                                    } else if (action === 'restore') {
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            deleted: false,
+                                            restoredAt: serverTimestamp(),
+                                            restoredBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        showToast('a?�Xa??e??a��?a?�e??');
                                     }
-                                    
-                                    showToast(`a�P2${action === 'approve' ? 'a?�Ma??' : 'a??c�g?'}e??a??c?3e??`);
                                     
                                     // e??a?�Xa??e??e�L?e??
                                     loadLeaveRecords();

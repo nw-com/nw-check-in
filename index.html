@@ -3063,6 +3063,10 @@
                                 <label for="leave-date-filter" class="text-sm font-medium">日期:</label>
                                 <input type="date" id="leave-date-filter" class="border border-gray-300 rounded-md px-2 py-1" value="">
                             </div>
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="leave-show-deleted" class="rounded" />
+                                <span class="text-sm font-medium">顯示已刪除</span>
+                            </label>
                             <button id="leave-search-btn" class="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 flex items-center">
                                 <i data-lucide="search" class="w-4 h-4 mr-1"></i>搜尋
                             </button>
@@ -3108,12 +3112,38 @@
                 const statusFilter = document.getElementById('leave-status-filter');
                 const dateFilter = document.getElementById('leave-date-filter');
                 const searchBtn = document.getElementById('leave-search-btn');
-                
-                // 初始加載數據
-                loadLeaveRecords();
+                const showDeletedChk = document.getElementById('leave-show-deleted');
+
+                // 取得 Firestore 快捷參考（後續多處使用）
+                const db = window.__db; 
+                const { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, serverTimestamp } = window.__fs;
+
+                // 讀取當前使用者是否為管理員
+                let isAdmin = false;
+                (async () => {
+                    try {
+                        const uid = window.__auth?.currentUser?.uid;
+                        if (uid) {
+                            const userSnap = await getDoc(doc(db, 'users', uid));
+                            if (userSnap.exists()) {
+                                const role = userSnap.data().role;
+                                isAdmin = role === 'admin';
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('讀取使用者角色失敗', err);
+                    } finally {
+                        // 初始加載數據
+                        loadLeaveRecords();
+                    }
+                })();
                 
                 // 添加搜尋按鈕事件
                 searchBtn.addEventListener('click', () => {
+                    loadLeaveRecords();
+                });
+                // 顯示已刪除勾選事件
+                showDeletedChk.addEventListener('change', () => {
                     loadLeaveRecords();
                 });
                 
@@ -3139,7 +3169,6 @@
                     const date = dateFilter.value;
                     
                     // 構建查詢
-                    const db = window.__db; const { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, serverTimestamp } = window.__fs;
                     let leavesQuery = collection(db, 'leaves');
                     
                     // 如果選擇了特定狀態
@@ -3175,6 +3204,12 @@
                         querySnapshot.forEach((docSnap) => {
                             const leave = docSnap.data();
                             const leaveId = docSnap.id;
+                            const isDeleted = !!leave.deleted;
+                            
+                            // 若未勾選顯示已刪除，則過濾掉 deleted 記錄
+                            if (!showDeletedChk.checked && isDeleted) {
+                                return;
+                            }
                             
                             // 如果選擇了日期，檢查請假時間是否在所選日期範圍內
                             if (selectedDate && nextDay) {
@@ -3212,6 +3247,26 @@
                             
                             const row = document.createElement('tr');
                             row.className = 'hover:bg-gray-50';
+                            
+                            let actionButtons = '';
+                            if (leave.status === 'pending') {
+                                actionButtons += `
+                                    <button data-leave-id="${leaveId}" data-action="approve" class="text-green-600 hover:text-green-900 mr-3">
+                                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                                    </button>
+                                    <button data-leave-id="${leaveId}" data-action="reject" class="text-red-600 hover:text-red-900">
+                                        <i data-lucide="x-circle" class="w-5 h-5"></i>
+                                    </button>
+                                `;
+                            }
+                            if (isAdmin) {
+                                actionButtons += `
+                                    <button data-leave-id="${leaveId}" data-action="${isDeleted ? 'restore' : 'delete'}" class="text-gray-600 hover:text-gray-900 ml-3">
+                                        <i data-lucide="${isDeleted ? 'rotate-ccw' : 'trash-2'}" class="w-5 h-5"></i>
+                                    </button>
+                                `;
+                            }
+                            
                             row.innerHTML = `
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
@@ -3230,16 +3285,10 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     ${statusBadge}
+                                    ${isDeleted ? '<span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">已刪除</span>' : ''}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    ${leave.status === 'pending' ? `
-                                        <button data-leave-id="${leaveId}" data-action="approve" class="text-green-600 hover:text-green-900 mr-3">
-                                            <i data-lucide="check-circle" class="w-5 h-5"></i>
-                                        </button>
-                                        <button data-leave-id="${leaveId}" data-action="reject" class="text-red-600 hover:text-red-900">
-                                            <i data-lucide="x-circle" class="w-5 h-5"></i>
-                                        </button>
-                                    ` : ''}
+                                    ${actionButtons}
                                 </td>
                             `;
                             
@@ -3253,7 +3302,7 @@
                             noRecordsMsg.classList.remove('hidden');
                         }
                         
-                        // 添加審核按鈕事件
+                        // 添加操作按鈕事件（審核／刪除／還原）
                         document.querySelectorAll('[data-leave-id]').forEach(btn => {
                             btn.addEventListener('click', async (e) => {
                                 const leaveId = e.currentTarget.dataset.leaveId;
@@ -3271,19 +3320,35 @@
                                     const leaveData = leaveDocSnap.data();
                                     const userId = leaveData.userId;
                                     
-                                    // 更新請假記錄狀態
-                                    await updateDoc(doc(db, 'leaves', leaveId), {
-                                        status: action === 'approve' ? 'approved' : 'rejected',
-                                        reviewedAt: serverTimestamp(),
-                                        reviewedBy: window.__auth?.currentUser?.uid || ''
-                                    });
-                                    
-                                    // 如果核准，更新用戶狀態
-                                    if (action === 'approve') {
-                                        await updateDoc(doc(db, 'users', userId), { leaveStatus: 'approved' });
+                                    if (action === 'approve' || action === 'reject') {
+                                        // 更新請假記錄狀態（審核）
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            status: action === 'approve' ? 'approved' : 'rejected',
+                                            reviewedAt: serverTimestamp(),
+                                            reviewedBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        // 如果核准，更新用戶狀態
+                                        if (action === 'approve') {
+                                            await updateDoc(doc(db, 'users', userId), { leaveStatus: 'approved' });
+                                        }
+                                        showToast(`已${action === 'approve' ? '核准' : '拒絕'}請假申請`);
+                                    } else if (action === 'delete') {
+                                        // 軟刪除
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            deleted: true,
+                                            deletedAt: serverTimestamp(),
+                                            deletedBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        showToast('已標記為刪除');
+                                    } else if (action === 'restore') {
+                                        // 還原
+                                        await updateDoc(doc(db, 'leaves', leaveId), {
+                                            deleted: false,
+                                            restoredAt: serverTimestamp(),
+                                            restoredBy: window.__auth?.currentUser?.uid || ''
+                                        });
+                                        showToast('已還原刪除標記');
                                     }
-                                    
-                                    showToast(`已${action === 'approve' ? '核准' : '拒絕'}請假申請`);
                                     
                                     // 重新加載記錄
                                     loadLeaveRecords();
