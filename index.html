@@ -1456,7 +1456,7 @@
                 // 已移除特殊勤務按鈕
             }
 
-            // 上班日期子分頁：以月為單位，每日可編輯時段
+            // 上班日期子分頁：以月為單位（只讀），從 Firestore 讀取
             function renderWorkDatesMonthView(container) {
                 let year, month; // 0-based month
                 const trgY = localStorage.getItem('__workdays_target_year');
@@ -1472,8 +1472,6 @@
                     month = now.getMonth();
                 }
                 const ymKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-                const storageKey = `workdays-${ymKey}`;
-                const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
 
                 // 讀取假日設定以決定預設是否為工作日
                 const holidaySettings = window.__holidaySettingsCache || { weekendIsHoliday: false, holidays: [] };
@@ -1490,7 +1488,7 @@
                             <div class="flex items-center justify-between mb-4">
                                 <h2 class="text-xl font-bold text-gray-800">上班日期（${year}年${month+1}月）</h2>
                                 <div class="space-x-2">
-                                    <button id="save-workdays" class="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700">儲存本月設定</button>
+                                    <span class="text-sm text-gray-500">僅供查看，請至設定頁調整</span>
                                     <button id="prev-workdays-month" class="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200">上個月</button>
                                     <button id="next-workdays-month" class="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200">下個月</button>
                                 </div>
@@ -1500,56 +1498,80 @@
                     </div>`;
 
                 const listEl = document.getElementById('workdays-list');
-                // 生成本月每日列
+                listEl.innerHTML = `<div class="p-4 text-center text-gray-500"><div class="flex items-center justify-center"><i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>載入上班設定...</div></div>`;
+                lucide.createIcons();
+
+                // 生成本月每日列（只讀）
                 const firstDay = new Date(year, month, 1);
                 const lastDay = new Date(year, month + 1, 0);
-                for (let d = 1; d <= lastDay.getDate(); d++) {
-                    const date = new Date(year, month, d);
-                    const weekdayNames = ['日','一','二','三','四','五','六'];
-                    const weekday = weekdayNames[date.getDay()];
-                    const ymd = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                    const defaultIsWorkday = !isHoliday(date) && (date.getDay() >= 1 && date.getDay() <= 5);
-                    const existing = saved[ymd] || null;
-                    const startDefault = existing?.start || (defaultIsWorkday ? '09:00' : '');
-                    const endDefault = existing?.end || (defaultIsWorkday ? '17:30' : '');
-                    const isGray = holidaysSet.has(ymd) || (holidaySettings.weekendIsHoliday && (date.getDay()===0 || date.getDay()===6));
 
-                    const row = document.createElement('div');
-                    row.className = `flex items-center justify-between p-2 rounded border ${isGray ? 'bg-gray-100' : 'bg-white'}`;
-                    row.innerHTML = `
-                        <div class="w-40">
-                            <div class="font-medium">${ymd}</div>
-                            <div class="text-xs text-gray-500">星期${weekday}</div>
-                        </div>
-                        <div class="flex items-center space-x-2 flex-1 justify-end">
-                            <label class="text-sm text-gray-600">開始</label>
-                            <input type="time" class="border border-gray-300 rounded-md p-1" id="start-${ymd}" value="${startDefault}" placeholder="--:--">
-                            <label class="text-sm text-gray-600 ml-2">結束</label>
-                            <input type="time" class="border border-gray-300 rounded-md p-1" id="end-${ymd}" value="${endDefault}" placeholder="--:--">
-                            <button class="ml-2 px-2 py-1 border rounded-md text-sm" id="clear-${ymd}">清除</button>
-                        </div>
-                    `;
-                    listEl.appendChild(row);
-
-                    document.getElementById(`clear-${ymd}`).addEventListener('click', () => {
-                        document.getElementById(`start-${ymd}`).value = '';
-                        document.getElementById(`end-${ymd}`).value = '';
-                    });
-                }
-
-                document.getElementById('save-workdays').addEventListener('click', () => {
-                    const newData = {};
+                const renderRows = (daysMap) => {
+                    listEl.innerHTML = '';
                     for (let d = 1; d <= lastDay.getDate(); d++) {
+                        const date = new Date(year, month, d);
+                        const weekdayNames = ['日','一','二','三','四','五','六'];
+                        const weekday = weekdayNames[date.getDay()];
                         const ymd = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                        const s = document.getElementById(`start-${ymd}`).value;
-                        const e = document.getElementById(`end-${ymd}`).value;
-                        if (s && e) {
-                            newData[ymd] = { start: s, end: e };
-                        }
+                        const defaultIsWorkday = !isHoliday(date) && (date.getDay() >= 1 && date.getDay() <= 5);
+                        const existing = daysMap && daysMap[ymd] ? daysMap[ymd] : null;
+                        const startDefault = existing?.start || (defaultIsWorkday ? '09:00' : '');
+                        const endDefault = existing?.end || (defaultIsWorkday ? '17:30' : '');
+                        const isGray = holidaysSet.has(ymd) || (holidaySettings.weekendIsHoliday && (date.getDay()===0 || date.getDay()===6));
+
+                        const row = document.createElement('div');
+                        row.className = `flex items-center justify-between p-2 rounded border ${isGray ? 'bg-gray-100' : 'bg-white'}`;
+                        row.innerHTML = `
+                            <div class="w-40">
+                                <div class="font-medium">${ymd}</div>
+                                <div class="text-xs text-gray-500">星期${weekday}</div>
+                            </div>
+                            <div class="flex items-center space-x-2 flex-1 justify-end">
+                                <label class="text-sm text-gray-600">開始</label>
+                                <input type="time" class="border border-gray-300 rounded-md p-1 bg-gray-50" id="start-${ymd}" value="${startDefault}" placeholder="--:--" disabled>
+                                <label class="text-sm text-gray-600 ml-2">結束</label>
+                                <input type="time" class="border border-gray-300 rounded-md p-1 bg-gray-50" id="end-${ymd}" value="${endDefault}" placeholder="--:--" disabled>
+                            </div>
+                        `;
+                        listEl.appendChild(row);
                     }
-                    localStorage.setItem(storageKey, JSON.stringify(newData));
-                    showToast('本月上班時間已儲存');
-                });
+                };
+
+                const fetchWorkdays = async () => {
+                    const db = window.__db; const { doc, getDoc } = window.__fs;
+                    let daysMap = {};
+                    try {
+                        // 全域設定：settings/workdays_YYYY-MM
+                        const settingsDocSnap = await getDoc(doc(db, 'settings', `workdays_${ymKey}`));
+                        if (settingsDocSnap.exists()) {
+                            const sd = settingsDocSnap.data();
+                            if (sd && sd.days && typeof sd.days === 'object') {
+                                daysMap = { ...sd.days };
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('讀取全域上班設定失敗', e);
+                    }
+                    try {
+                        // 個人覆蓋：users/{uid}/workdays/{YYYY-MM}
+                        const user = window.__auth?.currentUser;
+                        if (user) {
+                            const userDocSnap = await getDoc(doc(db, 'users', user.uid, 'workdays', ymKey));
+                            if (userDocSnap.exists()) {
+                                const ud = userDocSnap.data();
+                                if (ud && ud.days && typeof ud.days === 'object') {
+                                    daysMap = { ...daysMap, ...ud.days };
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('讀取個人上班設定失敗', e);
+                    }
+                    return daysMap;
+                };
+
+                fetchWorkdays()
+                    .then((daysMap) => { renderRows(daysMap); lucide.createIcons(); })
+                    .catch(() => { renderRows({}); lucide.createIcons(); });
 
                 // 月份切換：重導至 clock-in/workdays 導覽，帶目標月份
                 const navigateWorkdays = (offset) => {
