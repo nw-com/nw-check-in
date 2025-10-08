@@ -282,6 +282,7 @@
             addDoc,
             getDoc,
             updateDoc,
+            deleteDoc,
             setDoc,
             query,
             where,
@@ -453,7 +454,7 @@
                 cleanupListeners();
                 if (user) {
                     bodyEl.classList.remove('bg-red-600');
-                    bodyEl.classList.add('bg-gray-800');
+                    bodyEl.classList.add('bg-gray-100');
                     state.currentUser = user;
                     const userDocRef = doc(db, "users", user.uid);
                     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
@@ -2928,34 +2929,9 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                             </div>
                                             <div class="mt-1 text-xs text-gray-500">裝置ID: ${record.deviceId || '未知'}</div>
                                         </div>
-                                        <div class="flex space-x-2 items-start">
-                                            ${record.location ? `
-                                                <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
-                                                    data-lat="${record.location.latitude}" 
-                                                    data-lng="${record.location.longitude}">
-                                                    <i data-lucide="map-pin"></i> 地圖
-                                                </button>
-                                            ` : ''}
-                                            <!-- Admin controls: edit/delete -->
-                                            <span class="admin-controls hidden" data-record-id="${record.id}" data-record='${JSON.stringify({
-                                                id: record.id,
-                                                type: record.type,
-                                                timeISO: (record.timestamp?.toDate?.() || new Date()).toISOString(),
-                                                lat: record.location?.latitude ?? null,
-                                                lng: record.location?.longitude ?? null,
-                                                locationName: record.locationName || '',
-                                                dutyType: record.dutyType || ''
-                                            })}'>
-                                                <button class="edit-record-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm">
-                                                    <i data-lucide="pencil"></i> 編輯
-                                                </button>
-                                                <button class="delete-record-btn bg-red-600 text-white px-2 py-1 rounded text-sm">
-                                                    <i data-lucide="trash-2"></i> 刪除
-                                                </button>
-                                            </span>
-                                        </div>
+                                        <div class="flex space-x-2 items-start"></div>
                                     </div>
-                                    <div class="mt-2 flex space-x-2 overflow-x-auto">
+                                    <div class="mt-2 flex space-x-2 overflow-x-auto items-center">
                                         ${record.photoUrls && record.photoUrls.length > 0 ? `
                                             <button class="photo-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" 
                                                 data-photos='${JSON.stringify(record.photoUrls || [])}' 
@@ -2963,6 +2939,30 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                                                 <i data-lucide="image"></i> 照片 (${record.photoUrls.length})
                                             </button>
                                         ` : ''}
+                                        ${record.location ? `
+                                            <button class="map-btn bg-green-500 text-white px-2 py-1 rounded text-sm" 
+                                                data-lat="${record.location.latitude}" 
+                                                data-lng="${record.location.longitude}">
+                                                <i data-lucide="map-pin"></i> 地圖
+                                            </button>
+                                        ` : ''}
+                                        <!-- Admin controls: edit/delete -->
+                                        <span class="admin-controls hidden" data-record-id="${record.id}" data-record='${JSON.stringify({
+                                            id: record.id,
+                                            type: record.type,
+                                            timeISO: (record.timestamp?.toDate?.() || new Date()).toISOString(),
+                                            lat: record.location?.latitude ?? null,
+                                            lng: record.location?.longitude ?? null,
+                                            locationName: record.locationName || '',
+                                            dutyType: record.dutyType || ''
+                                        })}'>
+                                            <button class="edit-record-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm">
+                                                <i data-lucide="pencil"></i> 編輯
+                                            </button>
+                                            <button class="delete-record-btn bg-red-600 text-white px-2 py-1 rounded text-sm">
+                                                <i data-lucide="trash-2"></i> 刪除
+                                            </button>
+                                        </span>
                                     </div>
                                 `;
                                 recordsList.appendChild(card);
@@ -4667,6 +4667,20 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
                         if (dutyType) updateData.dutyType = dutyType.slice(0, 100);
                         await updateDoc(doc(db, 'clockInRecords', record.id), updateData);
                         showToast('更新成功');
+                        // 依當前頁面觸發刷新：追蹤或人事列表
+                        try {
+                            if (typeof loadAttendanceRecords === 'function') {
+                                // 追蹤頁面
+                                loadAttendanceRecords();
+                            } else if (typeof renderAttendanceRecordsList === 'function') {
+                                // 人事列表頁面
+                                const selectedUserId = document.getElementById('user-select')?.value || 'all';
+                                const selectedDateStr = document.getElementById('record-date')?.value || new Date().toISOString().split('T')[0];
+                                await renderAttendanceRecordsList('attendance-records-list', selectedUserId, selectedDateStr);
+                            }
+                        } catch (err) {
+                            console.warn('刷新列表時發生問題：', err);
+                        }
                         close();
                     } catch (e) {
                         console.error('update clockInRecord error', e);
@@ -5916,7 +5930,6 @@ const statusText = getStatusDisplayText(r.type || '未知', r.locationName || nu
     </script>
 </body>
 </html>
-
 
 
 
