@@ -255,6 +255,12 @@
           measurementId: "G-61Q1QNNRD2"
         };
         const GOOGLE_MAPS_API_KEY = "AIzaSyAzhLdWtycJgfz8UsXWlji63DkXpA4kmyY";
+        // Icon library fallback: prevent ReferenceError if lucide not loaded
+        if (!window.lucide || typeof window.lucide.createIcons !== 'function') {
+            window.lucide = window.lucide || {};
+            window.lucide.createIcons = function() {};
+            try { console.warn('Lucide 未載入，已使用後備空函式避免錯誤'); } catch (e) {}
+        }
         // --- 🚨 設定結束 🚨 ---
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -1123,8 +1129,8 @@
                                     </div>
                                     <div class=\"flex space-x-2\">
                                         ${user.lastPhotoUrl ? `<button class=\"view-photo-btn p-2 bg-blue-100 rounded-md\" data-photo=\"${user.lastPhotoUrl}\" data-desc=\"${user.lastLocation || ''}\"><i data-lucide=\"image\" class=\"w-6 h-6 text-blue-600\"></i></button>` : ''}
-                                        ${user.lastLocation ? `<button class=\"view-map-btn p-2 bg-green-100 rounded-md\" data-lat=\"${user.lastLocation?.latitude || 0}\" data-lng=\"${user.lastLocation?.longitude || 0}\"><i data-lucide=\"map-pin\" class=\"w-6 h-6 text-green-600\"></i></button>` : ''}
                                     </div>
+                                    
                                 </div>`;
                         });
                         // 重新以最新 clockInRecords 更新每位使用者的時間（避免快照時序不同步）
@@ -1150,6 +1156,7 @@
                             console.warn('更新最新打卡時間時發生錯誤:', e);
                         }
                     })();
+                    try { lucide.createIcons(); } catch (e) {}
                     // 綁定照片與地圖按鈕
                     document.querySelectorAll('#all-users-modal .view-photo-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
@@ -1159,14 +1166,7 @@
                             else showToast('無照片可顯示', true);
                         });
                     });
-                    document.querySelectorAll('#all-users-modal .view-map-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const lat = parseFloat(e.currentTarget.dataset.lat);
-                            const lng = parseFloat(e.currentTarget.dataset.lng);
-                            if(lat && lng) openMapModal(lat, lng);
-                            else showToast('無位置資訊可顯示', true);
-                        });
-                    });
+                    
                 });
                 
                 function closeModal() {
@@ -2309,6 +2309,15 @@
                 mapLoader.classList.remove('hide');
                 state.currentLocation = null;
                 
+                // Geolocation requires secure context in modern browsers
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                    console.warn('非安全來源，可能導致 geolocation 或地圖無法使用');
+                    const tip = document.createElement('div');
+                    tip.className = 'p-2 text-yellow-700 text-xs';
+                    tip.textContent = '提示：請以 https 或 localhost 開啟以使用定位功能';
+                    mapDiv.parentElement?.insertBefore(tip, mapDiv);
+                }
+
                 if (!window.google || !window.google.maps) {
                     setTimeout(initClockInMap, 100);
                     return;
@@ -4581,6 +4590,11 @@
                     modal.remove();
                 });
                 
+                // Chrome requires secure context (https:// or localhost) for geolocation; inform user if not secure
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                    console.warn('非安全來源，可能導致定位或地圖無法使用');
+                    showToast('提示：請以 https 或 localhost 開啟以使用地圖定位', true);
+                }
                 if (window.google && window.google.maps) {
                     const mapDiv = document.getElementById('modal-map');
                     const map = new google.maps.Map(mapDiv, {
@@ -4619,9 +4633,6 @@
                             <div class="flex justify-between items-center p-4 border-b">
                                 <h3 class="font-bold text-lg">照片瀏覽</h3>
                                 <div class="flex items-center gap-2">
-                                    <button class="download-btn text-gray-600 hover:text-gray-800" title="下載">
-                                        <i data-lucide="download" class="w-5 h-5"></i>
-                                    </button>
                                     <button class="close-btn text-gray-500 hover:text-gray-700">
                                         <i data-lucide="x" class="w-5 h-5"></i>
                                     </button>
@@ -4647,65 +4658,7 @@
                 modal.querySelector('.close-btn').addEventListener('click', () => {
                     modal.remove();
                 });
-                const dlBtn = modal.querySelector('.download-btn');
-                if (dlBtn) {
-                    dlBtn.addEventListener('click', async () => {
-                        try {
-                            const slides = modal.querySelectorAll('.photo-slide');
-                            if (!slides || slides.length === 0) { showToast('無照片可下載', true); return; }
-                            let currentIndex = 0;
-                            if (slides.length > 1) {
-                                const idx = Array.from(slides).findIndex(s => s.style.display !== 'none');
-                                currentIndex = idx >= 0 ? idx : 0;
-                            }
-                            const imgEl = slides[currentIndex]?.querySelector('img');
-                            const src = imgEl?.src;
-                            if (!src) { showToast('無照片可下載', true); return; }
-
-                            const defaultName = `clock-in-photo-${Date.now()}`;
-                            const canDownloadAttr = 'download' in HTMLAnchorElement.prototype;
-                            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-                            if (src.startsWith('data:')) {
-                                const mime = src.substring(5, src.indexOf(';'));
-                                let ext = 'jpg';
-                                if (mime.includes('png')) ext = 'png';
-                                else if (mime.includes('jpeg')) ext = 'jpg';
-                                else if (mime.includes('webp')) ext = 'webp';
-                                if (canDownloadAttr && !isIOS) {
-                                    const a = document.createElement('a');
-                                    a.href = src;
-                                    a.download = `${defaultName}.${ext}`;
-                                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                                } else {
-                                    window.open(src, '_blank');
-                                }
-                            } else {
-                                try {
-                                    const res = await fetch(src, { mode: 'cors' });
-                                    if (!res.ok) throw new Error('下載失敗');
-                                    const blob = await res.blob();
-                                    const url = URL.createObjectURL(blob);
-                                    const extGuess = (blob.type && blob.type.split('/')[1]) || 'jpg';
-                                    if (canDownloadAttr && !isIOS) {
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `${defaultName}.${extGuess}`;
-                                        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                                    } else {
-                                        window.open(url, '_blank');
-                                    }
-                                    setTimeout(() => URL.revokeObjectURL(url), 5000);
-                                } catch (fetchErr) {
-                                    window.open(src, '_blank');
-                                }
-                            }
-                        } catch (err) {
-                            console.error('下載照片失敗', err);
-                            showToast('下載照片失敗', true);
-                        }
-                    });
-                }
+                // 下載功能已移除
                 
                 if ((photos?.length || 0) > 1) {
                     const slides = modal.querySelectorAll('.photo-slide');
@@ -5794,6 +5747,23 @@
                             return;
                         }
 
+                        // 勤務時間檢查：開始前禁止打卡，結束後標記超時巡邏
+                        const toDate = v => v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+                        const dutyStart = toDate(state.currentUserData?.dutyStartTime);
+                        const dutyEnd = toDate(state.currentUserData?.dutyEndTime);
+                        const restrictedTypes = ['外出','抵達','離開'];
+                        let isOvertime = false;
+                        if (restrictedTypes.includes(type) && (dutyStart || dutyEnd)) {
+                            const now = new Date();
+                            if (dutyStart && now < dutyStart) {
+                                showToast(`勤務尚未開始（${dutyStart.toLocaleString('zh-TW')}），不可打卡`, true);
+                                return;
+                            }
+                            if (dutyEnd && now > dutyEnd) {
+                                isOvertime = true;
+                            }
+                        }
+
                         // 將照片轉換為 Data URL 並儲存（恢復原行為）
                         const photoPromises = capturedPhotos.map(async (photo) => {
                             return new Promise((resolve) => {
@@ -5832,8 +5802,10 @@
                             descriptions,
                             deviceId: state.deviceId || 'unknown-device'
                         };
-                        // 勤務項目（僅外出時可能存在）：避免 undefined 寫入
-                        if (type === '外出' && state.dutyType) {
+                        // 勤務項目與超時巡邏標記：避免 undefined 寫入
+                        if (isOvertime) {
+                            recordData.dutyType = '超時巡邏';
+                        } else if (type === '外出' && state.dutyType) {
                             recordData.dutyType = state.dutyType;
                         }
                         
@@ -5878,8 +5850,10 @@
                                 userUpdateData.outboundLocation = locName2.slice(0, 100);
                             }
                         }
-                        // 外出時同步寫入勤務項目（若有）
-                        if (type === '外出' && state.dutyType) {
+                        // 超時巡邏標記或外出同步勤務項目（若有）
+                        if (isOvertime) {
+                            userUpdateData.dutyType = '超時巡邏';
+                        } else if (type === '外出' && state.dutyType) {
                             userUpdateData.dutyType = state.dutyType;
                         }
                         
@@ -6032,6 +6006,107 @@
             }
             // 使全域可用，以供其他腳本呼叫
             window.showToast = showToast;
+            function openVoiceCallModal(targetUserId, stream) {
+                const backdrop = document.createElement('div');
+                backdrop.id = 'voice-call-backdrop';
+                backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+
+                const modal = document.createElement('div');
+                modal.id = 'voice-call-modal';
+                modal.className = 'fixed inset-0 flex items-center justify-center z-50';
+
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-lg w-96 p-4';
+
+                const title = document.createElement('h3');
+                title.className = 'text-lg font-semibold mb-2';
+                const target = (window.state?.users || []).find(u => u.id === targetUserId);
+                title.textContent = `語音通話：${target?.name || target?.email || targetUserId}`;
+
+                const statusEl = document.createElement('div');
+                statusEl.className = 'text-sm text-gray-600 mb-3';
+                statusEl.textContent = '初始化麥克風…';
+
+                const audio = document.createElement('audio');
+                audio.autoplay = true;
+                audio.className = 'w-full mb-3';
+
+                const controls = document.createElement('div');
+                controls.className = 'grid grid-cols-2 gap-2';
+
+                const muteBtn = document.createElement('button');
+                muteBtn.className = 'px-3 py-2 rounded-md bg-gray-200 text-gray-700';
+                muteBtn.textContent = '靜音';
+
+                const endBtn = document.createElement('button');
+                endBtn.className = 'px-3 py-2 rounded-md bg-red-500 text-white';
+                endBtn.textContent = '結束通話';
+
+                controls.appendChild(muteBtn);
+                controls.appendChild(endBtn);
+
+                card.appendChild(title);
+                card.appendChild(statusEl);
+                card.appendChild(audio);
+                card.appendChild(controls);
+                modal.appendChild(card);
+                document.body.appendChild(backdrop);
+                document.body.appendChild(modal);
+
+                function close() {
+                    try {
+                        if (audio.srcObject) {
+                            audio.srcObject.getTracks().forEach(t => t.stop());
+                            audio.srcObject = null;
+                        }
+                    } catch (e) {}
+                    backdrop.remove();
+                    modal.remove();
+                }
+                backdrop.addEventListener('click', close);
+                endBtn.addEventListener('click', close);
+
+                let muted = false;
+                muteBtn.addEventListener('click', () => {
+                    muted = !muted;
+                    muteBtn.textContent = muted ? '取消靜音' : '靜音';
+                    const track = audio.srcObject && audio.srcObject.getAudioTracks()[0];
+                    if (track) track.enabled = !muted;
+                });
+
+                if (stream) {
+                    audio.srcObject = stream;
+                    statusEl.textContent = '麥克風已啟動（僅本機播放，尚未連線）';
+                } else {
+                    statusEl.textContent = '無法取得麥克風串流';
+                }
+            }
+
+            async function startVoiceCall(targetUserId) {
+                // Secure context check for microphone APIs
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                    console.warn('非安全來源，麥克風可能無法啟用');
+                    showToast('提示：請以 https 或 localhost 開啟以使用語音通話', true);
+                }
+                try {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        showToast('瀏覽器不支援語音通話 API', true);
+                        return;
+                    }
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    openVoiceCallModal(targetUserId, stream);
+                    showToast('語音通話初始化完成（尚未建立連線）');
+                } catch (e) {
+                    console.error('啟動語音通話失敗:', e);
+                    const msg = (e && e.name === 'NotAllowedError')
+                        ? '已拒絕麥克風權限，請在瀏覽器設定中允許'
+                        : (e && e.name === 'NotFoundError')
+                            ? '找不到可用的音訊裝置'
+                            : '無法啟用麥克風，請檢查權限與來源';
+                    showToast(msg, true);
+                }
+            }
+            window.startVoiceCall = startVoiceCall;
 
             function timeAgo(date) {
                 const seconds = Math.floor((new Date() - date) / 1000);
@@ -6135,11 +6210,11 @@
                 popup.style.maxHeight = `${Math.max(80, availableHeight)}px`;
                 popup.style.overflow = 'auto';
                 
-                // 添加按鈕 (只保留撥打電話按鈕)
+                // 添加按鈕（語音通話）
                 popup.innerHTML = `
                     <div class="flex justify-center">
-                        <button class="call-btn bg-blue-500 text-white py-2 px-3 rounded-md flex items-center justify-center" ${userPhone ? '' : 'disabled'} data-phone="${userPhone}">
-                            <i data-lucide="phone" class="w-4 h-4 mr-1"></i>撥打電話
+                        <button class="call-btn bg-purple-500 text-white py-1 px-2 rounded-md flex items-center justify-center" data-userid="${userId}">
+                            <i data-lucide="mic" class="w-4 h-4 mr-1"></i>語音通話
                         </button>
                     </div>
                 `;
@@ -6148,13 +6223,13 @@
                 document.body.appendChild(popup);
                 lucide.createIcons();
                 
-                // 添加按鈕事件
+                // 添加按鈕事件（語音通話）
                 popup.querySelector('.call-btn').addEventListener('click', function() {
-                    const phone = this.dataset.phone;
-                    if (phone) {
-                        window.open(`tel:${phone}`);
+                    const targetUserId = this.dataset.userid;
+                    if (targetUserId) {
+                        startVoiceCall(targetUserId);
                     } else {
-                        showToast('此用戶沒有設置電話號碼', true);
+                        showToast('無對象資訊', true);
                     }
                 });
                 
