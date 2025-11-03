@@ -8456,6 +8456,14 @@
         });
 
         // --- Initial Load ---
+        // --- Global Compatibility Shim ---
+        // 確保在所有函式作用域中都能使用 mainContent / modalContainer
+        // 某些功能模組在不同作用域被定義並使用這兩個變數，這裡提供全域可用的引用
+        var mainContent = document.getElementById('main-content');
+        var modalContainer = document.getElementById('modal-container');
+        window.mainContent = mainContent;
+        window.modalContainer = modalContainer;
+
         document.addEventListener('DOMContentLoaded', () => {
              lucide.createIcons();
              showLoading(true);
