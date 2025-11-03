@@ -5590,6 +5590,14 @@
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
                 
                 const subPageContent = document.getElementById('sub-page-content');
+                // 若 Firestore 尚未初始化，顯示提示並等待就緒事件後再渲染
+                const targetSub = subPage || 'accounts';
+                const needDb = ['accounts','rules','general','location','workdays','group'];
+                if (!window.__db && needDb.includes(targetSub)) {
+                    subPageContent.innerHTML = '<div class="p-4 text-gray-500">正在初始化資料庫…</div>';
+                    window.addEventListener('firebase-ready', () => renderSettings(targetSub), { once: true });
+                    return;
+                }
                 if (subPage === 'accounts') {
                     renderSettingsAccounts(subPageContent);
                 } else if (subPage === 'rules') {
@@ -5631,6 +5639,7 @@
             }
 
             async function initSettingsGroupUI() {
+                const db = window.__db;
                 const managerSelect = document.getElementById('manager-user-select');
                 const allowedList = document.getElementById('allowed-users-list');
                 const usersRef = collection(db, 'users');
@@ -5675,6 +5684,7 @@
             }
             
             function renderSettingsAccounts(container) {
+                const db = window.__db;
                 container.innerHTML = `
                     <div class="p-4">
                         <button id="add-user-btn" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
@@ -5767,6 +5777,7 @@
             }
 
             function renderSettingsGeneral(container) {
+                const db = window.__db;
                 container.innerHTML = `
                     <div class="p-4">
                         <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
@@ -6066,6 +6077,7 @@
             }
             
             function renderSettingsLocation(container) {
+                const db = window.__db;
                 container.innerHTML = `
                     <div class="p-4">
                         <div class="bg-white p-4 rounded-md shadow-sm border mb-4">
@@ -6612,6 +6624,7 @@
             }
             
             function renderSettingsRules(container) {
+                const db = window.__db;
                 container.innerHTML = `
                     <div class="p-4">
                         <button id="add-rule-btn" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 mb-4 flex items-center justify-center">
