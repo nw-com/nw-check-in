@@ -5577,6 +5577,7 @@
 
 
             function renderSettings(subPage) {
+                const mainContent = document.getElementById('main-content');
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="accounts" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'accounts' ? 'active' : ''}">帳號列表</button>
@@ -6895,6 +6896,7 @@
             }
 
             function openUserModal(user = null) {
+                const modalContainer = document.getElementById('modal-container');
                 const modalId = `user-modal-${Date.now()}`;
                 const isEditing = user !== null;
                 const title = isEditing ? '編輯帳號' : '新增帳號';
