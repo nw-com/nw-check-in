@@ -8738,10 +8738,12 @@
                         });
 
                         const uploadedPhotos = await Promise.all(photoPromises);
-                        // Firestore 規則：最多 3 張照片，描述數量需一致
-                        const limitedPhotos = uploadedPhotos.slice(0, 3);
+                        const limitedPhotos = Array.isArray(uploadedPhotos) ? uploadedPhotos.slice(0, 3) : [];
+                        const hasInvalidPhoto = limitedPhotos.some(p => !p || typeof p.url !== 'string' || p.url.length === 0);
+                        if (hasInvalidPhoto) {
+                            throw new Error('照片上傳失敗或格式錯誤');
+                        }
                         const photoUrls = limitedPhotos.map(p => p.url);
-                        // Firestore 不允許 undefined：將非字串說明轉為空字串
                         const descriptions = limitedPhotos.map(p => (typeof p.description === 'string' ? p.description : ''));
 
                         // 安全座標處理：若缺少或為後備，使用 (0,0)
@@ -8752,6 +8754,14 @@
                         if (!uid) {
                             throw new Error('未登入或找不到使用者，無法寫入打卡記錄');
                         }
+                        const allowedTypes = ['上班','下班','外出','返回','抵達','離開'];
+                        if (!allowedTypes.includes(type)) {
+                            throw new Error('打卡類型不合法');
+                        }
+                        if (photoUrls.length !== descriptions.length || photoUrls.length > 3) {
+                            throw new Error('照片與描述數量不一致');
+                        }
+                        const deviceId = (typeof state.deviceId === 'string' && state.deviceId) ? state.deviceId.slice(0, 100) : 'unknown-device';
                         const recordData = {
                             userId: uid,
                             type: type,
@@ -8759,18 +8769,15 @@
                             location: new GeoPoint(safeLat, safeLng),
                             photoUrls,
                             descriptions,
-                            deviceId: state.deviceId || 'unknown-device'
+                            deviceId
                         };
-                        // 勤務項目與超時巡邏標記：避免 undefined 寫入
                         if (isOvertime) {
                             recordData.dutyType = '超時巡邏';
-                        } else if (type === '外出' && state.dutyType) {
-                            recordData.dutyType = state.dutyType;
+                        } else if (type === '外出' && typeof state.dutyType === 'string' && state.dutyType) {
+                            recordData.dutyType = state.dutyType.slice(0, 50);
                         }
-                        
-                        // 如果是外出打卡，添加地點名稱
                         if (type === '外出') {
-                            const locName = typeof location.name === 'string' ? location.name : '';
+                            const locName = typeof location?.name === 'string' ? location.name : '';
                             if (locName) {
                                 recordData.locationName = locName.slice(0, 100);
                             }
