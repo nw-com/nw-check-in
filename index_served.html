@@ -2454,6 +2454,16 @@
                     }
                 } catch (e) { /* ignore */ }
                 const loadRecords = () => {
+                    const fs = window.__fs || {};
+                    const db = window.__db;
+                    const { collection, query, where, onSnapshot, Timestamp } = fs;
+                    if (!db || typeof onSnapshot !== 'function' || typeof collection !== 'function') {
+                        const recordsListEl = document.getElementById('records-list');
+                        if (recordsListEl) {
+                            recordsListEl.innerHTML = `<div class="text-center p-4 text-gray-500">系統初始化中，正在準備資料...</div>`;
+                        }
+                        return;
+                    }
                     const selectedDate = new Date(dateInput.value);
                     const startOfDay = new Date(selectedDate);
                     startOfDay.setHours(0, 0, 0, 0);
@@ -2658,7 +2668,15 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 };
 
                 dateInput.addEventListener('change', loadRecords);
-                loadRecords();
+                if (!(window.__db && window.__fs && typeof window.__fs.onSnapshot === 'function')) {
+                    const recordsListEl = document.getElementById('records-list');
+                    if (recordsListEl) {
+                        recordsListEl.innerHTML = `<div class=\"text-center p-4 text-gray-500\">系統初始化中，請稍候...</div>`;
+                    }
+                    window.addEventListener('firebase-ready', () => setTimeout(loadRecords, 0), { once: true });
+                } else {
+                    loadRecords();
+                }
 
                 // 月報表：選擇月份彈窗
                 const monthBtn = document.getElementById('open-month-report');
@@ -7946,6 +7964,14 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 });
 
                 const completeClockIn = async () => {
+                    // Ensure Firestore readiness and bind locals
+                    const fs = window.__fs || {};
+                    const db = window.__db;
+                    const { addDoc, collection, updateDoc, doc, getDoc, Timestamp, GeoPoint } = fs;
+                    if (!db || typeof addDoc !== 'function' || typeof collection !== 'function') {
+                        showToast('系統初始化中，請稍後再試', true);
+                        return;
+                    }
                     if (capturedPhotos.length === 0) {
                         showToast("e??e?3a�X?a??a??a�M�a?�gc?��c??", true);
                         return;

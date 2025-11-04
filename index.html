@@ -2500,6 +2500,16 @@
                     }
                 } catch (e) { /* ignore */ }
                 const loadRecords = () => {
+                    const fs = window.__fs || {};
+                    const db = window.__db;
+                    const { collection, query, where, onSnapshot, Timestamp } = fs;
+                    if (!db || typeof onSnapshot !== 'function' || typeof collection !== 'function') {
+                        const recordsListEl = document.getElementById('records-list');
+                        if (recordsListEl) {
+                            recordsListEl.innerHTML = `<div class="text-center p-4 text-gray-500">系統初始化中，正在準備資料...</div>`;
+                        }
+                        return;
+                    }
                     const selectedDate = new Date(dateInput.value);
                     const startOfDay = new Date(selectedDate);
                     startOfDay.setHours(0, 0, 0, 0);
@@ -2508,7 +2518,6 @@
                     
                     const recordsRef = collection(db, "clockInRecords");
                     // Firestore 端日期範圍查詢以避免時區邊界誤差（保留前端過濾作為保險）
-                    const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                     const q = query(
@@ -2710,7 +2719,15 @@
                 };
 
                 dateInput.addEventListener('change', loadRecords);
-                loadRecords();
+                if (!(window.__db && window.__fs && typeof window.__fs.onSnapshot === 'function')) {
+                    const recordsListEl = document.getElementById('records-list');
+                    if (recordsListEl) {
+                        recordsListEl.innerHTML = `<div class="text-center p-4 text-gray-500">系統初始化中，請稍候...</div>`;
+                    }
+                    window.addEventListener('firebase-ready', () => setTimeout(loadRecords, 0), { once: true });
+                } else {
+                    loadRecords();
+                }
 
                 // 月報表：選擇月份彈窗
                 const monthBtn = document.getElementById('open-month-report');
@@ -8665,6 +8682,14 @@
                 });
 
                 const completeClockIn = async () => {
+                    // 確保 Firestore 已就緒並於本地作用域取用
+                    const fs = window.__fs || {};
+                    const db = window.__db;
+                    const { addDoc, collection, updateDoc, doc, getDoc, Timestamp, GeoPoint } = fs;
+                    if (!db || typeof addDoc !== 'function' || typeof collection !== 'function') {
+                        showToast('系統初始化中，請稍後再試', true);
+                        return;
+                    }
                     if (capturedPhotos.length === 0) {
                         showToast("請至少拍攝一張照片", true);
                         return;
