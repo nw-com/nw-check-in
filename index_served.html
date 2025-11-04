@@ -3323,6 +3323,20 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
                             return tb - ta;
                         });
+                        // 若使用者清單載入失敗，從當日紀錄動態補齊帳號選項
+                        try {
+                            if (userSelect && userSelect.options.length <= 1) {
+                                const ids = new Set(filtered.map(r => r.userId).filter(Boolean));
+                                ids.forEach(uid => {
+                                    const name = userMap[uid] || (filtered.find(r => r.userId === uid)?.userName) || uid;
+                                    const opt = document.createElement('option');
+                                    opt.value = uid; opt.textContent = name;
+                                    userSelect.appendChild(opt);
+                                    userMap[uid] = name;
+                                });
+                            }
+                        } catch (e) { /* ignore */ }
+
                         listEl.innerHTML = '';
                         items.forEach(r => {
                             const when = r.timestamp?.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
@@ -3703,7 +3717,21 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 const db = window.__db;
                 if (!db || !collection || !query || !onSnapshot) {
                     const listEl = document.getElementById('hr-records-list');
-                    if (listEl) listEl.innerHTML = '<div class="text-center text-red-500 p-4">系統未初始化，請稍後再試。</div>';
+                    if (listEl) listEl.innerHTML = '<div class="text-center p-4 text-gray-500">系統初始化中，請稍候...</div>';
+                    let tries = 0; const maxTries = 120; // ~12s
+                    const timer = setInterval(() => {
+                        const fs = window.__fs || {};
+                        const ready = !!window.__db && !!fs.collection && !!fs.query && !!fs.onSnapshot && !!fs.where;
+                        if (ready) {
+                            clearInterval(timer);
+                            // Firebase 已就緒，重新渲染此子頁
+                            try { renderHRClockList(container); } catch (e) { console.warn('重新渲染打卡列表失敗', e); }
+                        } else if (++tries >= maxTries) {
+                            clearInterval(timer);
+                            const el = document.getElementById('hr-records-list');
+                            if (el) el.innerHTML = '<div class="text-center text-red-500 p-4">系統未初始化，請稍後再試。</div>';
+                        }
+                    }, 100);
                     return;
                 }
 
