@@ -3318,6 +3318,7 @@
 
                     const contentEl = container.querySelector('#month-all-report-content');
                     const exportRows = [];
+                    const exportSheets = [];
 
                     // 週五值班名單（一次讀取）
                     let fridayDutyRoster = {};
@@ -3389,6 +3390,7 @@
                                 </table>
                             </div>`;
                         const tbody = section.querySelector('tbody');
+                        const personRows = [];
 
                         const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
                         for (let d = 1; d <= daysInMonth; d++) {
@@ -3502,7 +3504,7 @@
                                 <td class="border px-2 py-1">${indicators.join('、')}</td>`;
                             tbody.appendChild(tr);
 
-                            // 匯出資料列
+                            // 匯出資料列（彙總 CSV 用）
                             exportRows.push([
                                 userName,
                                 dateLabel,
@@ -3513,7 +3515,31 @@
                                 outboundCount,
                                 indicators.join('、')
                             ]);
+
+                            // 匯出資料列（每人工作表用）
+                            personRows.push([
+                                dateLabel,
+                                weekdayZh[w],
+                                startText,
+                                endText,
+                                totalHours,
+                                outboundCount,
+                                indicators.join('、')
+                            ]);
                         }
+
+                        // 生成每人一個工作表的 AOA
+                        const rawName = String(userName || userId);
+                        const safeName = rawName.replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31) || '工作表';
+                        exportSheets.push({
+                            name: safeName,
+                            aoa: [
+                                ['使用者', userName],
+                                ['月份', ymTag],
+                                ['日期','星期','上班','下班','總時數','外出次數','指標'],
+                                ...personRows
+                            ]
+                        });
 
                         contentEl.appendChild(section);
                     }
@@ -3560,13 +3586,12 @@
                         try {
                             const XLSX = window.XLSX;
                             if (XLSX && XLSX.utils && XLSX.writeFile) {
-                                const aoa = [
-                                    ['使用者','日期','星期','上班','下班','總時數','外出次數','指標'],
-                                    ...exportRows
-                                ];
-                                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                                // 以每人一個工作表輸出 .xlsx
                                 const wb = XLSX.utils.book_new();
-                                XLSX.utils.book_append_sheet(wb, ws, '全員月報表');
+                                for (const sheet of exportSheets) {
+                                    const ws = XLSX.utils.aoa_to_sheet(sheet.aoa);
+                                    XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+                                }
                                 XLSX.writeFile(wb, `全員月報表_${ymTag}.xlsx`);
                             } else {
                                 const header = '使用者,日期,星期,上班,下班,總時數,外出次數,指標';
