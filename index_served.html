@@ -2851,7 +2851,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         const isDuty = isDutyBySpecial || isRosterDuty;
 
                         // 指示欄位：值班優先，不顯示假日
-                        if (!isDuty && isWeekend) indicators.push('假日');
+                        if (!isDuty && isWeekend && records.length === 0) indicators.push('假日');
                         if (isLeave) indicators.push('請假日');
                         if (isDuty) indicators.push('值班');
 
@@ -3046,7 +3046,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && !set.has(d)) indicators.push('假日');
+                                    if (!isDuty && !set.has(d) && records.length === 0) indicators.push('假日');
                                 } else {
                                     const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
                                     const isDutyBySpecial = duties.some(di => {
@@ -3059,7 +3059,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                    if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                                 }
                             } catch(e) {
                                 const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
@@ -3073,7 +3073,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 const normalize = (s) => (s || '').trim();
                                 const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                 const isDuty = isDutyBySpecial || isRosterDuty;
-                                if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                             }
                             const nextDay2 = new Date(dayStart); nextDay2.setDate(nextDay2.getDate()+1);
                             const isLeave = leaves.some(l => {
@@ -3297,9 +3297,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                         const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName)));
                                         const isDuty = isDutyBySpecial || isRosterDuty;
                                         // 平日非值班：假日判斷使用工作日設定（若不可用則以週末為假日）
-                                        if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                    if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                                     } catch(e) {
-                                        if (w === 6 || w === 0) indicators.push('假日');
+                                    if ((w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                                     }
                                     const nextDay2 = new Date(dayStart); nextDay2.setDate(nextDay2.getDate()+1);
                                     const isLeave = leaves.some(l => {

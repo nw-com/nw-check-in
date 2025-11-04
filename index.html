@@ -2911,8 +2911,8 @@
                                 const normalize = (s) => (s || '').trim();
                                 const isRosterDuty = Array.isArray(arr) && (arr.includes(myUid) || arr.some(n => normalize(n) === normalize(myName)));
                                 const isDuty = isDutyBySpecial || isRosterDuty;
-                                // 非值班且不在使用者自訂工作日，才標示假日
-                                if (!isDuty && !set.has(d)) indicators.push('假日');
+                                // 非值班且不在使用者自訂工作日，且沒有打卡紀錄，才標示假日
+                                if (!isDuty && !set.has(d) && records.length === 0) indicators.push('假日');
                             } else {
                                 // 後備判斷：週末為假日
                                 // 若為值班則不標示假日
@@ -2929,7 +2929,7 @@
                                 const normalize = (s) => (s || '').trim();
                                 const isRosterDuty = Array.isArray(arr) && (arr.includes(myUid) || arr.some(n => normalize(n) === normalize(myName)));
                                 const isDuty = isDutyBySpecial || isRosterDuty;
-                                if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                             }
                         } catch(e) {
                             // 讀取失敗，維持週末為假日，但仍嘗試以 UID/姓名判斷值班
@@ -2946,7 +2946,7 @@
                             const normalize = (s) => (s || '').trim();
                             const isRosterDuty = Array.isArray(arr) && ((myUid && arr.includes(myUid)) || arr.some(n => normalize(n) === normalize(myName)));
                             const isDuty = isDutyBySpecial || isRosterDuty;
-                            if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                            if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                         }
                         // 請假日（時間範圍相交）
                         const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
@@ -3163,7 +3163,7 @@
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && !set.has(d)) indicators.push('假日');
+                                    if (!isDuty && !set.has(d) && records.length === 0) indicators.push('假日');
                                 } else {
                                     const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
                                     const isDutyBySpecial = duties.some(di => {
@@ -3176,7 +3176,7 @@
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                    if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                                 }
                             } catch(e) {
                                 const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
@@ -3190,7 +3190,7 @@
                                 const normalize = (s) => (s || '').trim();
                                 const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                 const isDuty = isDutyBySpecial || isRosterDuty;
-                                if (!isDuty && (w === 6 || w === 0)) indicators.push('假日');
+                                if (!isDuty && (w === 6 || w === 0) && records.length === 0) indicators.push('假日');
                             }
                             const nextDay2 = new Date(dayStart); nextDay2.setDate(nextDay2.getDate()+1);
                             const isLeave = leaves.some(l => {
