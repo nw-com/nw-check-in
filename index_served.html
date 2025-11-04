@@ -232,9 +232,6 @@
                 <button id="nav-tracking" data-tab="tracking" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="map-pin"></i><span class="text-xs mt-1">追蹤</span>
                 </button>
-                <button id="nav-hr" data-tab="hr" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2 hide">
-                    <i data-lucide="users"></i><span class="text-xs mt-1">人事</span>
-                </button>
                 <button id="nav-features" data-tab="features" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="layers"></i><span class="text-xs mt-1">功能</span>
                 </button>
@@ -297,9 +294,11 @@
             addDoc,
             getDoc,
             updateDoc,
+            deleteDoc,
             setDoc,
             query,
             where,
+            onSnapshot,
             orderBy,
             limit,
             Timestamp,
@@ -508,10 +507,9 @@
                     if (navClockIn) navClockIn.classList.remove('hide');
                     if (navOther) navOther.classList.remove('hide');
                 } else if (role === 'admin') {
-                    // cR!c??a?!i??e!��c?oe??e1?a�?e�L-aR?a�?aooao?i??a�M?e!��c?oc??c�g?i??a??e?�a��?i??
-                    navTracking.classList.remove('hide');
-                    navSettings.classList.remove('hide');
-                    navHr.classList.remove('hide');
+                    // 管理員：顯示追蹤、設定；不顯示群組與人事
+                    navTracking && navTracking.classList.remove('hide');
+                    navSettings && navSettings.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else if (role === 'manager') {
                     // e??e??a�M?cR!i??e!��c?oe??e1?
@@ -523,9 +521,8 @@
                     navGroup.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else if (role === 'hr') {
-                    // aooao?i??e!��c?oe??e1?e??aooao?
-                    navTracking.classList.remove('hide');
-                    navHr.classList.remove('hide');
+                    // 人事角色：僅顯示追蹤（已移除人事分頁）
+                    navTracking && navTracking.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else {
                     // a?��a??/a�M�e??a??c?�Le�?i??a�M?e!��c?oe??e1?a�?e�L-aR?a�?HRa�?c??c�g?i??a�M?e!��c?oa�?a??a??a�?a??e??
@@ -752,7 +749,6 @@
                     'other': () => state.currentUserData.role === 'field' ? renderOther(subPage || 'news') : renderAccessDenied(),
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
-                    'hr': () => (state.currentUserData.role === 'admin' || state.currentUserData.role === 'hr') ? renderHR(subPage || 'attendance') : renderAccessDenied(),
                     'group': () => state.currentUserData.role === 'junior_manager' ? renderGroup(subPage || 'map') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
@@ -1383,11 +1379,12 @@
             }
 
             function renderClockIn(subPage) {
+                // 若舊連結導向已移除的 schedule，改導至 location
+                if (subPage === 'schedule') subPage = 'location';
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="location" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'location' ? 'active' : ''}">aR?a??a??a?!</button>
                         <button data-subtab="records" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'records' ? 'active' : ''}">a??a?!c���e??</button>
-                        <button data-subtab="schedule" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'schedule' ? 'active' : ''}">我的班表</button>
                         <button data-subtab="leaves" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leaves' ? 'active' : ''}">e??a??c���e??</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
@@ -1397,8 +1394,6 @@
                     renderClockInLocation(subPageContent);
                 } else if (subPage === 'records') {
                     renderClockInRecords(subPageContent);
-                } else if (subPage === 'schedule') {
-                    renderClockInSchedule(subPageContent);
                 } else if (subPage === 'leaves') {
                     renderMyLeaveRecords(subPageContent);
                 }
@@ -3981,6 +3976,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
             // aooao?a??e??i??a?oa??a??e!�La�?e??a??a??e!�L
             function renderHR(subPage) {
+                // 已下線：保留函式簽名避免舊連結報錯
+                mainContent.innerHTML = `<div class="p-8 text-center text-gray-500">「人事」分頁已移除。</div>`;
+                return;
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">a?oa??a??e!�L</button>
@@ -4479,6 +4477,9 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
             // 我的班表子分頁：顯示本月上班日期與排定時間與狀態，含月份切換與快捷連結
             function renderClockInSchedule(container) {
+                // 已下線：此功能不再提供
+                container.innerHTML = `<div class="p-8 text-center text-gray-500">「我的班表」已移除，請改用其他功能。</div>`;
+                return;
                 const now = new Date();
                 let viewYear = now.getFullYear();
                 let viewMonth = now.getMonth(); // 0-based
@@ -5877,16 +5878,22 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 }
                 const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
                 const fs = window.__fs; const db = window.__db;
-                if (!fs || !db) {
+                if (!fs || !db || typeof fs.onSnapshot !== 'function') {
                     console.warn('Firestore 未初始化，延後啟動人員位置監聽');
                     document.addEventListener('firebase-ready', () => { try { listenForUserLocations(); } catch (e) {} }, { once: true });
+                    const waitId = setInterval(() => {
+                        if (window.__fs && typeof window.__fs.onSnapshot === 'function' && window.__db) {
+                            clearInterval(waitId);
+                            try { listenForUserLocations(); } catch (e) {}
+                        }
+                    }, 200);
                     return;
                 }
-                const { collection, query, orderBy, onSnapshot } = fs;
+                const { collection, query, orderBy, onSnapshot, getDocs } = fs;
                 const usersRef = collection(db, "users");
                 const q = query(usersRef, orderBy("name"));
 
-                const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                const handleSnapshot = (querySnapshot) => {
                     state.trackingMarkers.forEach(marker => marker.map = null);
                     state.trackingMarkers = [];
 
@@ -5956,8 +5963,25 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             state.trackingMarkers.push(marker);
                         }
                     });
-                });
-                state.activeListeners.push(unsubscribe);
+                };
+
+                if (typeof onSnapshot === 'function') {
+                    const unsubscribe = onSnapshot(q, handleSnapshot);
+                    state.activeListeners.push(unsubscribe);
+                } else {
+                    console.warn('onSnapshot 不可用，改用輪詢更新人員列表');
+                    if (state.trackingPoller) clearInterval(state.trackingPoller);
+                    const poll = async () => {
+                        try {
+                            const snap = await getDocs(q);
+                            handleSnapshot(snap);
+                        } catch (e) {
+                            console.warn('輪詢人員列表失敗', e);
+                        }
+                    };
+                    poll();
+                    state.trackingPoller = setInterval(poll, 10000);
+                }
             }
 
 
