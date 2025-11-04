@@ -3910,6 +3910,20 @@
                                 return tb - ta;
                             });
 
+                            // 當載入 users 集合失敗或尚未載入時，動態以今日紀錄補齊帳號選項
+                            try {
+                                if (userSelect && userSelect.options.length <= 1) {
+                                    const ids = new Set(filtered.map(r => r.userId).filter(Boolean));
+                                    ids.forEach(uid => {
+                                        const name = userMap[uid] || (filtered.find(r => r.userId === uid)?.userName) || uid;
+                                        const opt = document.createElement('option');
+                                        opt.value = uid; opt.textContent = name;
+                                        userSelect.appendChild(opt);
+                                        userMap[uid] = name;
+                                    });
+                                }
+                            } catch (e) { /* ignore */ }
+
                             listEl.innerHTML = '';
                             filtered.forEach(record => {
                                 const card = document.createElement('div');
