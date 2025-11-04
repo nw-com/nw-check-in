@@ -5396,6 +5396,13 @@
 
             async function listenForUserLocations() {
                 const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                const fs = window.__fs; const db = window.__db;
+                if (!fs || !db) {
+                    console.warn('Firestore 未初始化，延後啟動人員位置監聽');
+                    document.addEventListener('firebase-ready', () => { try { listenForUserLocations(); } catch (e) {} }, { once: true });
+                    return;
+                }
+                const { collection, query, orderBy, onSnapshot } = fs;
                 const usersRef = collection(db, "users");
                 const q = query(usersRef, orderBy("name"));
 
