@@ -3861,12 +3861,13 @@
                     const dateInput = document.getElementById('hr-record-date');
                     const monthBtn = document.getElementById('hr-open-month-report');
 
-                    // 載入使用者清單供下拉選擇
+                    // 載入使用者清單供下拉選擇（優先 Firestore，失敗時使用快取 fallback）
                     const usersRef = collection(db, 'users');
                     const userMap = {};
                     (async () => {
+                        let loaded = false;
                         try {
-                            const qs = await getDocs ? await getDocs(usersRef) : null;
+                            const qs = await (getDocs ? getDocs(usersRef) : Promise.resolve(null));
                             if (qs) {
                                 const users = [];
                                 qs.forEach(doc => {
@@ -3875,14 +3876,38 @@
                                     users.push({ id: doc.id, name });
                                     userMap[doc.id] = name;
                                 });
-                                users.sort((a,b) => a.name.localeCompare(b.name, 'zh-TW'));
+                                users.sort((a,b) => String(a.name).localeCompare(String(b.name), 'zh-TW'));
                                 users.forEach(u => {
-                                    const opt = document.createElement('option');
-                                    opt.value = u.id; opt.textContent = `${u.name}`;
-                                    userSelect.appendChild(opt);
+                                    // 避免重複加入
+                                    if (![...userSelect.options].some(o => o.value === u.id)) {
+                                        const opt = document.createElement('option');
+                                        opt.value = u.id; opt.textContent = `${u.name}`;
+                                        userSelect.appendChild(opt);
+                                    }
                                 });
+                                loaded = true;
                             }
-                        } catch(e) { console.warn('載入使用者清單失敗', e); }
+                        } catch(e) { console.warn('載入使用者清單失敗（Firestore）', e); }
+
+                        // 若 Firestore 讀取失敗或尚未載入，嘗試使用快取函式（js/calendar.js）
+                        if (!loaded) {
+                            try {
+                                if (typeof window.fetchUsersOnce === 'function') {
+                                    const cached = await window.fetchUsersOnce();
+                                    const users = Object.keys(cached).map(id => ({ id, name: cached[id] }));
+                                    users.sort((a,b) => String(a.name).localeCompare(String(b.name), 'zh-TW'));
+                                    users.forEach(u => {
+                                        if (![...userSelect.options].some(o => o.value === u.id)) {
+                                            const opt = document.createElement('option');
+                                            opt.value = u.id; opt.textContent = `${u.name}`;
+                                            userSelect.appendChild(opt);
+                                        }
+                                        userMap[u.id] = u.name;
+                                    });
+                                    loaded = true;
+                                }
+                            } catch(e) { console.warn('載入使用者清單失敗（快取 fallback）', e); }
+                        }
                     })();
 
                     let unsubscribe = null;
@@ -3986,6 +4011,13 @@
                     dateInput.addEventListener('change', loadRecords);
                     userSelect.addEventListener('change', loadRecords);
                     loadRecords();
+
+                    // 防護：若本地函式存在但未綁到 window，補綁一次
+                    try {
+                        if (typeof window.renderPersonalMonthlyReport !== 'function' && typeof renderPersonalMonthlyReport === 'function') {
+                            window.renderPersonalMonthlyReport = renderPersonalMonthlyReport;
+                        }
+                    } catch (_) {}
 
                     // HR 月報表：需選擇特定使用者後開啟月份選擇
                     monthBtn?.addEventListener('click', () => {
