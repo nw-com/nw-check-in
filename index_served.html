@@ -4367,6 +4367,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
             async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
                 const isAdmin = await (window.checkAdminStatus ? window.checkAdminStatus() : Promise.resolve(false));
                 const container = document.getElementById(containerId);
+                if (!container) { console.warn('renderAttendanceRecordsList: c?c? a?o a??a??', containerId); return; }
                 const selectedDate = new Date(selectedDateStr);
                 const startOfDay = new Date(selectedDate);
                 startOfDay.setHours(0, 0, 0, 0);

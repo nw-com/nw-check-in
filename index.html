@@ -3837,7 +3837,7 @@
                 try { lucide.createIcons(); } catch(e) {}
 
                 const listElInit = document.getElementById('hr-records-list');
-                let tries = 0; const maxTries = 60; // ~6s
+                let tries = 0; const maxTries = 120; // ~12s（GitHub Pages 初始化可能較慢）
                 const waitReady = () => {
                     const dbReady = !!window.__db;
                     const fsReady = !!window.__fs && !!window.__fs.collection && !!window.__fs.query && !!window.__fs.onSnapshot;
@@ -3849,6 +3849,8 @@
                         if (listElInit) listElInit.innerHTML = '<div class="text-center text-red-500 p-4">系統未初始化，請稍後再試。</div>';
                     }
                 };
+                // 若其他腳本在稍後才完成初始化，透過事件通知重新開始
+                try { window.addEventListener('firebase-ready', () => { try { start(); } catch (e) {} }); } catch (e) {}
                 waitReady();
 
                 function start() {
@@ -4593,6 +4595,7 @@
             // 共用：出勤紀錄列表渲染（支援指定用戶白名單）
             async function renderAttendanceRecordsList(containerId, selectedUserId, selectedDateStr, allowedUserIds = null) {
                 const container = document.getElementById(containerId);
+                if (!container) { console.warn('renderAttendanceRecordsList: 找不到容器', containerId); return; }
                 const selectedDate = new Date(selectedDateStr);
                 const startOfDay = new Date(selectedDate);
                 startOfDay.setHours(0, 0, 0, 0);
