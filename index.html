@@ -8820,8 +8820,8 @@
                             const uid2 = window.__auth?.currentUser?.uid || state.currentUser?.uid;
                             await updateDoc(doc(db, "users", uid2), userUpdateData);
                         } catch (e) {
-                            console.error('更新 users 狀態失敗：', e?.code, e?.message || e, { keys: Object.keys(userUpdateData) });
-                            throw e;
+                            // 軟失敗：若使用者文件不存在或無權限，仍視為打卡成功
+                            console.warn('更新 users 狀態失敗（將不阻斷打卡）：', e?.code, e?.message || e);
                         }
 
                         // 更新本地狀態

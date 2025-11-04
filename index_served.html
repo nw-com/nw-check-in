@@ -8081,8 +8081,8 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             const uid2 = window.__auth?.currentUser?.uid || state.currentUser?.uid;
                             await updateDoc(doc(db, "users", uid2), userUpdateData);
                         } catch (e) {
-                            console.error('a?��a?�X users c?�a??a?��a??i??', e?.code, e?.message || e, { keys: Object.keys(userUpdateData) });
-                            throw e;
+                            // soft-fail: don't block clock-in on profile update errors
+                            console.warn('update users failed (soft-fail):', e?.code, e?.message || e);
                         }
 
                         // a?��a?�Xa??a?�Xc?�a??

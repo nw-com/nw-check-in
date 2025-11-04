@@ -40,8 +40,24 @@ service cloud.firestore {
           'firstClockInDeviceId'
         ])
       );
-      // 只有管理員可以建立或刪除使用者文件
-      allow create, delete: if isAdmin();
+      // 建立文件：允許本人建立自己的使用者文件（限安全欄位）。管理員仍可建立/刪除任意使用者文件。
+      allow create: if (
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'name',
+          'avatarUrl',
+          'clockInStatus',
+          'outboundLocation',
+          'dutyType',
+          'leaveReason',
+          'leaveStatus',
+          'status',
+          'lastUpdated',
+          'firstClockInDeviceId'
+        ]) &&
+        (request.resource.data.lastUpdated == null || request.resource.data.lastUpdated is timestamp)
+      ) || isAdmin();
+      allow delete: if isAdmin();
     }
     
     // 允許所有登入的使用者讀取所有人的打卡紀錄。
