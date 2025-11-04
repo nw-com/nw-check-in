@@ -5865,6 +5865,16 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
             }
 
             async function listenForUserLocations() {
+                // 等待地圖與 Google 物件準備完成，避免「google 未定義」錯誤
+                if (!window.google || !state.googleMapsLoaded || !state.trackingMap) {
+                    const pollId = setInterval(() => {
+                        if (window.google && state.googleMapsLoaded && state.trackingMap) {
+                            clearInterval(pollId);
+                            try { listenForUserLocations(); } catch(e) {}
+                        }
+                    }, 200);
+                    return;
+                }
                 const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
                 const fs = window.__fs; const db = window.__db;
                 if (!fs || !db) {
