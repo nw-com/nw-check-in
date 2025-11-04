@@ -3152,6 +3152,7 @@
                                     const snap2 = await getDoc(ref);
                                     const days = snap2.exists() ? (snap2.data().days || []) : [];
                                     const set = new Set(days.map(n => Number(n)));
+                                    const hasWorkdayConfig = Array.isArray(days) && days.length > 0;
                                     const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
                                     const isDutyBySpecial = duties.some(di => {
                                         const s = di.startTime?.toDate?.() || (di.startTime ? new Date(di.startTime) : null);
@@ -3163,7 +3164,13 @@
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && !set.has(d) && records.length === 0) indicators.push('假日');
+                                    if (!isDuty && records.length === 0) {
+                                        if (hasWorkdayConfig) {
+                                            if (!set.has(d)) indicators.push('假日');
+                                        } else {
+                                            if (w === 6 || w === 0) indicators.push('假日');
+                                        }
+                                    }
                                 } else {
                                     const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
                                     const isDutyBySpecial = duties.some(di => {
@@ -3444,7 +3451,13 @@
                                     const normalize = (s) => (s || '').trim();
                                     const isRosterDuty = Array.isArray(arr) && (arr.includes(userId) || arr.some(n => normalize(n) === normalize(userName || '')));
                                     const isDuty = isDutyBySpecial || isRosterDuty;
-                                    if (!isDuty && !set.has(d)) indicators.push('假日');
+                                    if (!isDuty && records.length === 0) {
+                                        if (hasWorkdayConfig) {
+                                            if (!set.has(d)) indicators.push('假日');
+                                        } else {
+                                            if (w === 6 || w === 0) indicators.push('假日');
+                                        }
+                                    }
                                 } else {
                                     const nextDay = new Date(dayStart); nextDay.setDate(nextDay.getDate()+1);
                                     const isDutyBySpecial = duties.some(di => {
