@@ -3317,6 +3317,7 @@
                     document.body.appendChild(container);
 
                     const contentEl = container.querySelector('#month-all-report-content');
+                    const exportRows = [];
 
                     // 週五值班名單（一次讀取）
                     let fridayDutyRoster = {};
@@ -3368,6 +3369,7 @@
                         } catch(e) { /* ignore */ }
 
                         const section = document.createElement('div');
+                        section.className = 'all-month-person mb-6';
                         section.innerHTML = `
                             <div>
                                 <h2 class="text-lg font-bold mb-2 text-center">${ymTag}出勤紀錄-${userName}</h2>
@@ -3499,6 +3501,18 @@
                                 <td class="border px-2 py-1 text-center">${outboundCount}</td>
                                 <td class="border px-2 py-1">${indicators.join('、')}</td>`;
                             tbody.appendChild(tr);
+
+                            // 匯出資料列
+                            exportRows.push([
+                                userName,
+                                dateLabel,
+                                weekdayZh[w],
+                                startText,
+                                endText,
+                                totalHours,
+                                outboundCount,
+                                indicators.join('、')
+                            ]);
                         }
 
                         contentEl.appendChild(section);
@@ -3509,7 +3523,7 @@
                         const style = document.createElement('style');
                         style.id = 'monthly-all-report-print-style';
                         style.textContent = `
-                        @page { size: A4; margin: 10mm; }
+                        @page { size: A4 portrait; margin: 10mm; }
                         @media print {
                             body { -webkit-print-color-adjust: exact; }
                             body > * { display: none !important; }
@@ -3518,6 +3532,8 @@
                             #monthly-all-report-container .px-4.py-3.bg-indigo-600 { display: none !important; }
                             #monthly-all-report-container .p-4.flex-1 { padding: 0 !important; }
                             #month-all-report-content { width: 190mm !important; margin: 0 auto 0 auto !important; }
+                            #month-all-report-content > .all-month-person { break-after: page; page-break-after: always; }
+                            #month-all-report-content > .all-month-person:last-child { break-after: auto; page-break-after: auto; }
                             table { border-collapse: collapse; }
                             th, td { font-size: 11px; line-height: 1.2; padding: 2px 4px; }
                         }
@@ -3527,6 +3543,50 @@
 
                     container.querySelector('#close-all-month-report').addEventListener('click', () => container.remove());
                     container.querySelector('#print-all-month-report').addEventListener('click', () => { window.print(); });
+
+                    // 匯出 Excel/CSV 功能
+                    const exportBtn = container.querySelector('#export-all-month-report');
+                    if (!exportBtn) {
+                        const headerActions = container.querySelector('.px-4.py-3.bg-indigo-600 .space-x-2');
+                        if (headerActions) {
+                            const btn = document.createElement('button');
+                            btn.id = 'export-all-month-report';
+                            btn.className = 'px-3 py-1.5 bg-white text-indigo-700 rounded hover:bg-gray-100';
+                            btn.textContent = '匯出Excel';
+                            headerActions.insertBefore(btn, headerActions.querySelector('#close-all-month-report'));
+                        }
+                    }
+                    container.querySelector('#export-all-month-report')?.addEventListener('click', () => {
+                        try {
+                            const XLSX = window.XLSX;
+                            if (XLSX && XLSX.utils && XLSX.writeFile) {
+                                const aoa = [
+                                    ['使用者','日期','星期','上班','下班','總時數','外出次數','指標'],
+                                    ...exportRows
+                                ];
+                                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, '全員月報表');
+                                XLSX.writeFile(wb, `全員月報表_${ymTag}.xlsx`);
+                            } else {
+                                const header = '使用者,日期,星期,上班,下班,總時數,外出次數,指標';
+                                const csv = [header, ...exportRows.map(r => r.map(v => {
+                                    const s = String(v ?? '');
+                                    const escaped = s.replace(/"/g, '""');
+                                    return `"${escaped}"`;
+                                }).join(','))].join('\r\n');
+                                const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8;' });
+                                const a = document.createElement('a');
+                                a.href = URL.createObjectURL(blob);
+                                a.download = `全員月報表_${ymTag}.csv`;
+                                a.click();
+                                setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                            }
+                        } catch (e) {
+                            console.error('匯出全員月報表失敗', e);
+                            showToast && showToast('匯出全員月報表失敗', true);
+                        }
+                    });
                 } catch (err) {
                     console.error('renderAllMonthlyReports 失敗', err);
                     showToast && showToast('生成全員月報表失敗', true);
