@@ -7980,9 +7980,11 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     showLoading(true);
 
                     try {
-                        // a??a??e�L��aR?a?�Le|?a??a�M-c??a??a?!e!?a??
-                        const allowedTypes = ['a�M?c?-','a�M?c?-','a??a?o','e??a??','a?�ge??','e?�Fe??','e?aa??a�M?c?-'];
-                        if (!allowedTypes.includes(type)) {
+                        // Allowed types guard (use existing if already declared)
+                        const __allowedTypes = (typeof allowedTypes !== 'undefined' && Array.isArray(allowedTypes))
+                          ? allowedTypes
+                          : ['上班','下班','外出','返回','抵達','離開','自動下班'];
+                        if (!__allowedTypes.includes(type)) {
                             console.warn('a�M?a??e�L��c??a??a?!e!?a??i??a�P2a??a??a��?a?�Di??', type);
                             showToast('a-?a??a?!e!?a??a�M?a?��a?��c���e??a��?a?�Di??e??a?1c?�La�X?a??a??e??', true);
                             return;
