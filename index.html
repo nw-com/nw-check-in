@@ -819,6 +819,8 @@
                 }
                 lucide.createIcons();
             }
+            // 讓其他區塊可安全呼叫（例如打卡流程結束後）
+            window.showPage = showPage;
 
             function renderAccessDenied() {
                 mainContent.innerHTML = `
@@ -8859,7 +8861,16 @@
                         
                         showToast(`${type}打卡成功！`);
                         close();
-                        showPage('clock-in', 'location');  // 改為顯示定位打卡頁面
+                        // 安全導頁：若 showPage 不可用則直接重繪打卡頁
+                        try {
+                            if (typeof showPage === 'function') {
+                                showPage('clock-in', 'location');
+                            } else if (typeof renderClockIn === 'function') {
+                                renderClockIn('location');
+                            }
+                        } catch (_navErr) {
+                            console.warn('導頁失敗，但打卡已成功：', _navErr);
+                        }
 
                     } catch (error) {
                         console.error("Clock in error:", error);
