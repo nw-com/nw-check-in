@@ -8754,8 +8754,11 @@
                         if (!uid) {
                             throw new Error('未登入或找不到使用者，無法寫入打卡記錄');
                         }
-                        const allowedTypes = ['上班','下班','外出','返回','抵達','離開'];
-                        if (!allowedTypes.includes(type)) {
+                        // 使用既有 allowedTypes（若前面已宣告），否則宣告一次
+                        const __allowedTypes = (typeof allowedTypes !== 'undefined' && Array.isArray(allowedTypes))
+                            ? allowedTypes
+                            : ['上班','下班','外出','返回','抵達','離開','自動下班'];
+                        if (!__allowedTypes.includes(type)) {
                             throw new Error('打卡類型不合法');
                         }
                         if (photoUrls.length !== descriptions.length || photoUrls.length > 3) {
