@@ -234,6 +234,9 @@
                 <button id="nav-tracking" data-tab="tracking" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="map-pin"></i><span class="text-xs mt-1">追蹤</span>
                 </button>
+                <button id="nav-hr" data-tab="hr" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2 hide">
+                    <i data-lucide="users"></i><span class="text-xs mt-1">人事</span>
+                </button>
                 <button id="nav-features" data-tab="features" class="tab-btn flex flex-col items-center text-gray-500 border-t-2 border-transparent pt-2">
                     <i data-lucide="layers"></i><span class="text-xs mt-1">功能</span>
                 </button>
@@ -559,9 +562,10 @@
                     if (navClockIn) navClockIn.classList.remove('hide');
                     if (navOther) navOther.classList.remove('hide');
                 } else if (role === 'admin') {
-                    // 管理員：顯示追蹤、設定；不顯示群組與人事
+                    // 管理員：顯示追蹤、設定、人事
                     navTracking.classList.remove('hide');
                     navSettings.classList.remove('hide');
+                    if (navHr) navHr.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else if (role === 'manager') {
                     // 高階主管：顯示追蹤
@@ -573,8 +577,9 @@
                     navGroup.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else if (role === 'hr') {
-                    // 人事角色：僅顯示追蹤（移除人事分頁）
+                    // 人事角色：顯示追蹤與人事
                     navTracking.classList.remove('hide');
+                    if (navHr) navHr.classList.remove('hide');
                     if (navOther) navOther.classList.add('hide');
                 } else {
                     // 內勤/一般使用者：不顯示追蹤、設定、HR、群組；不顯示「其他」分頁
@@ -807,7 +812,8 @@
                     'other': () => state.currentUserData.role === 'field' ? renderOther(subPage || 'news') : renderAccessDenied(),
                     'calendar': () => renderCalendar(subPage || 'overview'),
                     'settings': () => state.currentUserData.role === 'admin' ? renderSettings(subPage || 'accounts') : renderAccessDenied(),
-                    'group': () => state.currentUserData.role === 'junior_manager' ? renderGroup(subPage || 'map') : renderAccessDenied()
+                    'group': () => state.currentUserData.role === 'junior_manager' ? renderGroup(subPage || 'map') : renderAccessDenied(),
+                    'hr': () => ['admin','hr'].includes(state.currentUserData.role) ? renderHR(subPage || 'print') : renderAccessDenied()
                 };
                 const renderFunction = router[pageName] || renderAccessDenied;
                 try {
@@ -4176,34 +4182,352 @@
                 await renderList();
             }
 
-            // 人事分頁：出勤列表、請假列表
+            // 人事分頁：僅列印報表
             function renderHR(subPage) {
-                // 已下線：保留函式簽名避免舊連結報錯
-                mainContent.innerHTML = `<div class="p-8 text-center text-gray-500">「人事」分頁已移除。</div>`;
-                return;
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
-                        <button data-subtab="attendance" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance' ? 'active' : ''}">出勤列表</button>
-                        <button data-subtab="leave" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'leave' ? 'active' : ''}">請假列表</button>
-                        <button data-subtab="clock-list" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'clock-list' ? 'active' : ''}">打卡列表</button>
-                        <button data-subtab="monthly" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'monthly' ? 'active' : ''}">月報表</button>
+                        <button data-subtab="print" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'print' || !subPage ? 'active' : ''}">列印報表</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
 
                 const subPageContent = document.getElementById('sub-page-content');
-                if (subPage === 'leave') {
-                    renderTrackingLeave(subPageContent);
-                } else if (subPage === 'clock-list') {
-                    renderHRClockList(subPageContent);
-                } else if (subPage === 'monthly') {
-                    renderHRMonthly(subPageContent);
-                } else {
-                    renderTrackingAttendance(subPageContent);
+                renderHRPrintReport(subPageContent);
+
+                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('hr', btn.dataset.subtab)));
+            }
+
+            // 人事 > 列印報表：月報表（支援全部人員或單一人員、列印與匯出）
+            function renderHRPrintReport(container) {
+                const db = window.__db;
+                const { collection, getDocs, query, where, Timestamp } = window.__fs || {};
+                if (!db || !collection || !getDocs) {
+                    container.innerHTML = '<div class="p-4 text-red-600">系統未初始化，請稍後再試。</div>';
+                    return;
                 }
 
-                // 初次渲染修改紀錄
-                try { renderModList(); } catch(e) {}
-                mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('hr', btn.dataset.subtab)));
+                const today = new Date();
+                const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="monthly-user-select" class="text-sm font-medium">選擇人員:</label>
+                                <select id="monthly-user-select" class="border border-gray-300 rounded-md px-2 py-1">
+                                    <option value="all">全部人員</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="monthly-month" class="text-sm font-medium">選擇月份:</label>
+                                <input type="month" id="monthly-month" value="${defaultMonth}" class="border border-gray-300 rounded-md px-2 py-1">
+                            </div>
+                            <div class="flex items-center space-x-2 ml-auto">
+                                <button id="btn-print-monthly" class="bg-gray-700 text-white px-3 py-1 rounded flex items-center">
+                                    <i data-lucide="printer" class="w-4 h-4 mr-1"></i> 列印
+                                </button>
+                                <button id="btn-export-excel" class="bg-blue-600 text-white px-3 py-1 rounded flex items-center">
+                                    <i data-lucide="download" class="w-4 h-4 mr-1"></i> 匯出Excel
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow overflow-x-auto">
+                            <table id="attendance-monthly-table" class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50" id="attendance-monthly-thead"></thead>
+                                <tbody id="attendance-monthly-tbody" class="bg-white divide-y divide-gray-200">
+                                    <tr><td colspan="32" class="px-6 py-4 text-center text-gray-500">
+                                        <div class="flex items-center justify-center">
+                                            <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                            載入中...
+                                        </div>
+                                    </td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                try { lucide.createIcons(); } catch(e) {}
+
+                const usersRef = collection(db, 'users');
+                const userSelect = document.getElementById('monthly-user-select');
+                const monthInput = document.getElementById('monthly-month');
+                const theadEl = document.getElementById('attendance-monthly-thead');
+                const tbodyEl = document.getElementById('attendance-monthly-tbody');
+
+                let usersArr = [];
+                let usersMap = {};
+
+                const fmtHM = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+
+                const renderHeader = (daysInMonth) => {
+                    const cols = ['<tr><th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">人員</th>'];
+                    for (let i = 1; i <= daysInMonth; i++) {
+                        cols.push(`<th class="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">${String(i).padStart(2,'0')}</th>`);
+                    }
+                    cols.push('<th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">出勤日數</th>');
+                    cols.push('<th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">總工時(小時)</th>');
+                    cols.push('<th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">請假日數</th>');
+                    cols.push('<th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">特殊勤務日數</th>');
+                    cols.push('</tr>');
+                    theadEl.innerHTML = cols.join('');
+                };
+
+                const loadMonthlyReport = async () => {
+                    const ymStr = monthInput.value || defaultMonth;
+                    const [yStr, mStr] = ymStr.split('-');
+                    const year = Number(yStr);
+                    const month = Number(mStr) - 1; // 0-based
+                    const startOfMonth = new Date(year, month, 1, 0, 0, 0, 0);
+                    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999);
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    renderHeader(daysInMonth);
+
+                    const selectedUserId = userSelect.value;
+                    const recordsRef = collection(db, 'clockInRecords');
+                    const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
+                    const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
+                    let q;
+                    if (selectedUserId === 'all') {
+                        q = query(recordsRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
+                    } else {
+                        q = query(recordsRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
+                    }
+
+                    tbodyEl.innerHTML = `<tr><td colspan="32" class="px-6 py-4 text-center text-gray-500"><div class="flex items-center justify-center"><i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>載入中...</div></td></tr>`;
+
+                    try {
+                        const snap = await getDocs(q);
+                        const byUser = new Map();
+                        snap.forEach(d => {
+                            const r = d.data();
+                            const uid = r.userId;
+                            const dt = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
+                            if (!uid || !dt) return;
+                            const day = dt.getDate();
+                            const entry = byUser.get(uid) || { days: new Map() };
+                            const dayObj = entry.days.get(day) || { start: null, end: null };
+                            if (r.type === '上班') { if (!dayObj.start || dt < dayObj.start) dayObj.start = dt; }
+                            if (r.type === '下班' || r.type === '自動下班') { if (!dayObj.end || dt > dayObj.end) dayObj.end = dt; }
+                            entry.days.set(day, dayObj);
+                            byUser.set(uid, entry);
+                        });
+
+                        const dayNumbersInRange = (start, end) => {
+                            if (!start || !end) return [];
+                            const cs = new Date(Math.max(start.getTime(), startOfMonth.getTime()));
+                            const ce = new Date(Math.min(end.getTime(), endOfMonth.getTime()));
+                            cs.setHours(12,0,0,0); ce.setHours(12,0,0,0);
+                            const out = [];
+                            for (let d = new Date(cs); d <= ce; d.setDate(d.getDate() + 1)) { out.push(d.getDate()); }
+                            return out;
+                        };
+
+                        const leaveDaySetMap = new Map();
+                        try {
+                            const leavesRef = collection(db, 'leaves');
+                            let qLeaves;
+                            if (selectedUserId === 'all') { qLeaves = query(leavesRef, where('status','==','approved')); }
+                            else { qLeaves = query(leavesRef, where('status','==','approved'), where('userId','==', selectedUserId)); }
+                            const leavesSnap = await getDocs(qLeaves);
+                            leavesSnap.forEach(doc => {
+                                const lv = doc.data();
+                                const uid = lv.userId || lv.uid || (lv.user && lv.user.id);
+                                if (!uid) return;
+                                const s = (lv.startTime && lv.startTime.toDate?.()) || (lv.startTime ? new Date(lv.startTime) : (lv.leaveStartTime && lv.leaveStartTime.toDate?.()) || (lv.leaveStartTime ? new Date(lv.leaveStartTime) : null));
+                                const e = (lv.endTime && lv.endTime.toDate?.()) || (lv.endTime ? new Date(lv.endTime) : (lv.leaveEndTime && lv.leaveEndTime.toDate?.()) || (lv.leaveEndTime ? new Date(lv.leaveEndTime) : null));
+                                if (!s || !e) return;
+                                const days = dayNumbersInRange(s, e);
+                                if (!days.length) return;
+                                const set = leaveDaySetMap.get(uid) || new Set();
+                                days.forEach(n => set.add(n));
+                                leaveDaySetMap.set(uid, set);
+                            });
+                        } catch (e) {}
+
+                        const specialDutyDaySetMap = new Map();
+                        try {
+                            const sdRef = collection(db, 'specialDuties');
+                            const startTS2 = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
+                            const endTS2 = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
+                            let q1, q2;
+                            if (selectedUserId === 'all') {
+                                q1 = query(sdRef, where('startTime','>=', startTS2), where('startTime','<=', endTS2));
+                                q2 = query(sdRef, where('endTime','>=', startTS2), where('endTime','<=', endTS2));
+                            } else {
+                                q1 = query(sdRef, where('userId','==', selectedUserId), where('startTime','>=', startTS2), where('startTime','<=', endTS2));
+                                q2 = query(sdRef, where('userId','==', selectedUserId), where('endTime','>=', startTS2), where('endTime','<=', endTS2));
+                            }
+                            const sdDocs = new Map();
+                            for (const qq of [q1, q2]) { const sSnap = await getDocs(qq); sSnap.forEach(doc => { sdDocs.set(doc.id, doc.data()); }); }
+                            sdDocs.forEach(sd => {
+                                const uid = sd.userId;
+                                const s = sd.startTime?.toDate?.() || (sd.startTime ? new Date(sd.startTime) : null);
+                                const e = sd.endTime?.toDate?.() || (sd.endTime ? new Date(sd.endTime) : null);
+                                if (!uid || !s || !e) return;
+                                const days = dayNumbersInRange(s, e);
+                                if (!days.length) return;
+                                const set = specialDutyDaySetMap.get(uid) || new Set();
+                                days.forEach(n => set.add(n));
+                                specialDutyDaySetMap.set(uid, set);
+                            });
+                        } catch (e) {}
+
+                        const buildRow = (user) => {
+                            const uid = user.id;
+                            const entry = byUser.get(uid) || { days: new Map() };
+                            let attendDays = 0; let totalMinutes = 0;
+                            const tds = [`<td class="px-3 py-2 whitespace-nowrap text-sm text-gray-800">${user.name || usersMap[uid] || '未知用戶'}</td>`];
+                            for (let i = 1; i <= daysInMonth; i++) {
+                                const dObj = entry.days.get(i) || { start: null, end: null };
+                                const hasStart = !!dObj.start; const hasEnd = !!dObj.end;
+                                const cls = hasStart && hasEnd ? 'bg-green-50' : (hasStart || hasEnd ? 'bg-yellow-50' : '');
+                                let text = '--';
+                                if (hasStart && hasEnd) text = `${fmtHM(dObj.start)}~${fmtHM(dObj.end)}`;
+                                else if (hasStart) text = `${fmtHM(dObj.start)}`;
+                                else if (hasEnd) text = `${fmtHM(dObj.end)}`;
+                                if (hasStart || hasEnd) attendDays++;
+                                if (hasStart && hasEnd) totalMinutes += Math.max(0, (dObj.end - dObj.start) / 60000);
+                                tds.push(`<td class="px-2 py-1 text-center text-xs ${cls}">${text}</td>`);
+                            }
+                            const totalHours = (totalMinutes / 60).toFixed(2);
+                            const leaveDays = (leaveDaySetMap.get(uid)?.size) || 0;
+                            const dutyDays = (specialDutyDaySetMap.get(uid)?.size) || 0;
+                            tds.push(`<td class="px-3 py-2 text-center text-sm">${attendDays}</td>`);
+                            tds.push(`<td class="px-3 py-2 text-center text-sm">${totalHours}</td>`);
+                            tds.push(`<td class="px-3 py-2 text-center text-sm">${leaveDays}</td>`);
+                            tds.push(`<td class="px-3 py-2 text-center text-sm">${dutyDays}</td>`);
+                            return `<tr>${tds.join('')}</tr>`;
+                        };
+
+                        const rows = [];
+                        if (selectedUserId === 'all') {
+                            const sorted = [...usersArr].sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant'));
+                            sorted.forEach(u => rows.push(buildRow(u)));
+                        } else {
+                            const user = usersArr.find(u => u.id === selectedUserId);
+                            if (user) rows.push(buildRow(user));
+                        }
+                        tbodyEl.innerHTML = rows.length ? rows.join('') : `<tr><td colspan="${daysInMonth + 5}" class="px-6 py-4 text-center text-gray-500">無資料</td></tr>`;
+                        try { lucide.createIcons(); } catch(e) {}
+                    } catch (err) {
+                        console.error('讀取月報表失敗', err);
+                        tbodyEl.innerHTML = `<tr><td colspan="32" class="px-6 py-4 text-center text-red-500">讀取紀錄失敗。</td></tr>`;
+                    }
+                };
+
+                getDocs(usersRef).then((qs) => {
+                    const users = [];
+                    qs.forEach(doc => { const data = doc.data() || {}; users.push({ id: doc.id, name: data.name || data.displayName || data.account || data.email || doc.id }); });
+                    usersArr = users;
+                    usersMap = users.reduce((acc, u) => { acc[u.id] = u.name; return acc; }, {});
+                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                        const option = document.createElement('option'); option.value = user.id; option.textContent = user.name; userSelect.appendChild(option);
+                    });
+                    loadMonthlyReport();
+                });
+
+                userSelect.addEventListener('change', loadMonthlyReport);
+                monthInput.addEventListener('change', loadMonthlyReport);
+
+                const btnPrint = document.getElementById('btn-print-monthly');
+                const btnExport = document.getElementById('btn-export-excel');
+                btnPrint.addEventListener('click', printMonthlyReport);
+                btnExport.addEventListener('click', exportMonthlyToExcel);
+
+                function getSelectedUserLabel() {
+                    const sel = document.getElementById('monthly-user-select');
+                    const opt = sel.options[sel.selectedIndex];
+                    return opt ? opt.textContent : '全部人員';
+                }
+
+                async function ensureXLSX() {
+                    if (window.XLSX) return true;
+                    return new Promise((resolve) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+                        s.onload = () => resolve(true);
+                        s.onerror = () => resolve(false);
+                        document.head.appendChild(s);
+                    });
+                }
+
+                function tableToCSV(table) {
+                    let csv = '';
+                    const rows = table.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('th,td');
+                        const values = Array.from(cells).map(cell => '"' + (cell.innerText || '').replace(/"/g, '""') + '"');
+                        csv += values.join(',') + '\r\n';
+                    });
+                    return csv;
+                }
+
+                async function exportMonthlyToExcel() {
+                    try {
+                        const ok = await ensureXLSX();
+                        const ymStr = monthInput.value || defaultMonth;
+                        const userLabel = getSelectedUserLabel();
+                        const filename = `出勤月報表_${ymStr}_${userLabel}.xlsx`;
+                        const table = document.getElementById('attendance-monthly-table');
+                        if (ok && window.XLSX && window.XLSX.utils && window.XLSX.writeFile) {
+                            const wb = XLSX.utils.table_to_book(table, { sheet: '月報表' });
+                            XLSX.writeFile(wb, filename);
+                        } else {
+                            const csv = tableToCSV(table);
+                            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(blob);
+                            a.download = `出勤月報表_${ymStr}_${userLabel}.csv`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                        }
+                    } catch (err) {
+                        console.error('exportMonthlyToExcel error', err);
+                        showToast && showToast('匯出失敗', true);
+                    }
+                }
+
+                function printMonthlyReport() {
+                    try {
+                        const ymStr = monthInput.value || defaultMonth;
+                        const userLabel = getSelectedUserLabel();
+                        const table = document.getElementById('attendance-monthly-table');
+                        const [yStr, mStr] = (ymStr || '').split('-');
+                        const year = Number(yStr);
+                        const monthNum = Number(mStr);
+                        const daysInMonth = new Date(year, monthNum, 0).getDate();
+                        const extraCols = 5;
+                        const targetBase = 31;
+                        let scale = targetBase / (daysInMonth + extraCols);
+                        scale = Math.max(0.55, Math.min(0.95, scale));
+                        const html = `<!doctype html><html><head><meta charset="utf-8"><title>出勤月報表</title>
+                        <style>
+                            @page { size: A4 landscape; margin: 10mm; }
+                            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                            body { font-family: system-ui,-apple-system,Segoe UI,Roboto,\"Helvetica Neue\",Arial,\"Noto Sans\",sans-serif; color: #111; }
+                            h1 { font-size: 14px; margin-bottom: 6px; }
+                            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+                            thead th { background: #f9fafb; }
+                            th, td { border: 1px solid #d1d5db; padding: 2px 3px; font-size: 10px; }
+                            th:first-child, td:first-child { text-align: left; }
+                            th:not(:first-child), td:not(:first-child) { text-align: center; white-space: nowrap; }
+                            tr { page-break-inside: avoid; }
+                            #print-wrap { transform: scale(${scale}); transform-origin: top left; width: calc(100% / ${scale}); }
+                        </style>
+                        </head><body>
+                        <h1>出勤月報表：${ymStr}（${userLabel}）</h1>
+                        <div id="print-wrap">${table.outerHTML}</div>
+                        </body></html>`;
+                        const w = window.open('', '_blank');
+                        w.document.open();
+                        w.document.write(html);
+                        w.document.close();
+                        w.focus();
+                        w.print();
+                    } catch (err) {
+                        console.error('printMonthlyReport error', err);
+                        showToast && showToast('列印失敗', true);
+                    }
+                }
             }
 
             // 人事 > 打卡列表：複製「打卡紀錄」並提供帳號篩選（含「所有帳號」）
