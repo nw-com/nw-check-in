@@ -1354,6 +1354,43 @@
                                     </div>
                                     
                                 </div>`;
+
+                            // 若是當前使用者，更新「我的狀態」區塊並標示已找到
+                            if (user.id === state.currentUser?.uid) {
+                                try { myStatusFound = true; } catch (e) {}
+                                (async () => {
+                                    try {
+                                        const recordsRef = collection(db, 'clockInRecords');
+                                        const q = query(recordsRef, where('userId', '==', state.currentUser.uid), orderBy('timestamp', 'desc'), limit(1));
+                                        const snap = await getDocs(q);
+                                        let innerHTML = '';
+                                        if (!snap.empty) {
+                                            const r = snap.docs[0].data();
+                                            const statusTextLast = getStatusDisplayText(r.type || '未知', r.locationName || null, r.dutyType || null);
+                                            const statusColorLast = getStatusColor(statusTextLast);
+                                            const ts = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate() : (r.timestamp ? new Date(r.timestamp) : null);
+                                            innerHTML = `
+                                                <div class="flex items-center justify-between">
+                                                    <span class="font-semibold text-lg ${statusColorLast}">${statusTextLast}</span>
+                                                </div>
+                                                <div class="text-sm text-gray-500 mt-1">
+                                                    ${ts ? '打卡 ' + ts.toLocaleString('zh-TW', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) : ''}
+                                                </div>`;
+                                        } else {
+                                            const statusTextLast = '尚未打卡';
+                                            const statusColorLast = getStatusColor(statusTextLast);
+                                            innerHTML = `
+                                                <div class="flex items-center justify-between">
+                                                    <span class="font-semibold text-lg ${statusColorLast}">${statusTextLast}</span>
+                                                </div>`;
+                                        }
+                                        const myStatusEl = document.getElementById('my-status');
+                                        if (myStatusEl) myStatusEl.innerHTML = innerHTML;
+                                    } catch (err) {
+                                        console.error('讀取最新打卡紀錄失敗', err);
+                                    }
+                                })();
+                            }
                         });
                         // 重新以最新 clockInRecords 更新每位使用者的時間（避免快照時序不同步）
                         try {
