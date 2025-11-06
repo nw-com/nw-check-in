@@ -2770,6 +2770,7 @@
                                             locationName: locationName || '',
                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
+                                            originalRecordId: d.id || null,
                                             status: 'pending'
                                         };
                                         await addDoc(collection(db, 'retroClockRequests'), payload);
@@ -4071,18 +4072,41 @@
                                 if (!reqDoc.exists()) { showToast('申請不存在', true); return; }
                                 const r = reqDoc.data();
                                 const ts = r.targetTime?.toDate?.() ? r.targetTime.toDate() : (r.targetTime ? new Date(r.targetTime) : new Date());
-                                await addDoc(collection(db, 'clockInRecords'), {
-                                    userId: r.userId,
-                                    type: r.type,
-                                    timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
-                                    location: GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 },
-                                    photoUrls: [],
-                                    descriptions: [],
-                                    deviceId: 'retro',
-                                    locationName: r.locationName || null,
-                                    dutyType: null,
-                                    isAutomatic: false
-                                });
+                                let replaced = false;
+                                // 若申請包含原始紀錄 ID，優先覆寫原紀錄
+                                if (r.originalRecordId) {
+                                    try {
+                                        const origRef = doc(db, 'clockInRecords', r.originalRecordId);
+                                        const origSnap = await window.__fs.getDoc(origRef);
+                                        if (origSnap.exists()) {
+                                            const updatePayload = {
+                                                type: r.type,
+                                                timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
+                                                locationName: r.locationName || null,
+                                                isAutomatic: false
+                                            };
+                                            await updateDoc(origRef, updatePayload);
+                                            replaced = true;
+                                        }
+                                    } catch (err) {
+                                        console.warn('覆寫原紀錄失敗，改為新增', err);
+                                    }
+                                }
+                                // 若無法覆寫或沒有 originalRecordId，則保留舊行為新增一筆（相容舊申請）
+                                if (!replaced) {
+                                    await addDoc(collection(db, 'clockInRecords'), {
+                                        userId: r.userId,
+                                        type: r.type,
+                                        timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
+                                        location: GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 },
+                                        photoUrls: [],
+                                        descriptions: [],
+                                        deviceId: 'retro',
+                                        locationName: r.locationName || null,
+                                        dutyType: null,
+                                        isAutomatic: false
+                                    });
+                                }
                                 // 同步更新 users 狀態，讓儀錶板與定位打卡按鈕正確顯示
                                 try {
                                     const newStatus = r.type; // 可能為：上班/下班/外出/抵達/離開/返回
@@ -4108,7 +4132,7 @@
                                     reviewerId: window.__auth?.currentUser?.uid || null,
                                     reviewedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date()
                                 });
-                                showToast('已核准並新增打卡紀錄');
+                                showToast(replaced ? '已核准並覆寫打卡紀錄' : '已核准並新增打卡紀錄');
                                 renderList();
                             } catch (e) {
                                 console.error('核准失敗', e);
