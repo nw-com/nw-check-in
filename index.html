@@ -362,6 +362,10 @@
             users: [],
             trackingMap: null,
             trackingMarkers: [],
+            // 供「定位打卡」子頁面使用的地圖與標記引用，以及定位監聽ID
+            clockInMap: null,
+            clockInMarker: null,
+            geoWatchId: null,
         };
         
         // 初始化本機裝置ID（用於打卡紀錄與首次打卡裝置標記）
@@ -3745,6 +3749,12 @@
                 }
                 
                 try {
+                    // 若已有監聽，先清除避免重複
+                    if (state.geoWatchId) {
+                        try { navigator.geolocation.clearWatch(state.geoWatchId); } catch (e) { console.warn('清除舊的 geolocation 監聽失敗', e); }
+                        state.geoWatchId = null;
+                    }
+
                     const pos = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, { 
                             enableHighAccuracy: true, 
@@ -3767,10 +3777,43 @@
                         disableDefaultUI: true 
                     });
                     
-                    new google.maps.Marker({ 
+                    const marker = new google.maps.Marker({ 
                         position: coords, 
                         map: map 
                     });
+
+                    // 儲存引用以便後續更新
+                    state.clockInMap = map;
+                    state.clockInMarker = marker;
+
+                    // 位置更新與地圖自動置中
+                    const updatePos = (p) => {
+                        const c = { lat: p.coords.latitude, lng: p.coords.longitude };
+                        state.currentLocation = c;
+                        if (state.clockInMarker) state.clockInMarker.setPosition(c);
+                        if (state.clockInMap) state.clockInMap.panTo(c);
+                    };
+
+                    // 啟動持續監聽位置
+                    state.geoWatchId = navigator.geolocation.watchPosition(updatePos, (err) => {
+                        console.warn('watchPosition 錯誤', err);
+                    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 });
+
+                    // 畫面回到可見時，立即抓一次當前位置以防瀏覽器節流
+                    const visHandler = () => {
+                        if (!document.hidden) {
+                            navigator.geolocation.getCurrentPosition(updatePos, (err) => console.warn('visibility getCurrentPosition 錯誤', err), { enableHighAccuracy: true, timeout: 10000 });
+                        }
+                    };
+                    const focusHandler = () => {
+                        navigator.geolocation.getCurrentPosition(updatePos, (err) => console.warn('focus getCurrentPosition 錯誤', err), { enableHighAccuracy: true, timeout: 10000 });
+                    };
+                    document.addEventListener('visibilitychange', visHandler);
+                    window.addEventListener('focus', focusHandler);
+                    // 交由全域清理機制移除
+                    state.activeListeners.push(() => document.removeEventListener('visibilitychange', visHandler));
+                    state.activeListeners.push(() => window.removeEventListener('focus', focusHandler));
+                    state.activeListeners.push(() => { if (state.geoWatchId) { try { navigator.geolocation.clearWatch(state.geoWatchId); } catch{} state.geoWatchId = null; } });
                     
                     mapLoader.classList.add('hide');
                 } catch (error) {
