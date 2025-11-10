@@ -105,6 +105,19 @@
               state.currentUser = user;
               document.body.classList.remove('bg-red-600');
               document.body.classList.add('bg-gray-100');
+              // 讀取角色後，若為管理員、人事、高階主管則導向導覽頁
+              (async () => {
+                try {
+                  const userDoc = await getDoc(doc(db, 'users', user.uid));
+                  const role = userDoc.exists() ? userDoc.data().role : null;
+                  const shouldRedirect = ['admin','hr','manager'].includes(role);
+                  const onNavPage = /office-nav\.html$/i.test(window.location.pathname);
+                  if (shouldRedirect && !onNavPage) {
+                    window.location.href = 'office-nav.html';
+                    return;
+                  }
+                } catch (e) { console.warn('導覽頁導向失敗（忽略）：', e); }
+              })();
               // 簡化：此頁面保留相同的主畫面渲染，具體內容沿用台北版邏輯
             } else {
               document.body.classList.remove('bg-gray-100');

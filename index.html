@@ -519,6 +519,18 @@
                                 signOut(auth);
                                 return;
                             }
+                            // 登入後導向導覽頁：管理員、人事、高階主管
+                            if (wasNotInitialized) {
+                                try {
+                                    const role = state.currentUserData?.role;
+                                    const shouldRedirect = ['admin','hr','manager'].includes(role);
+                                    const onNavPage = /office-nav\.html$/i.test(window.location.pathname);
+                                    if (shouldRedirect && !onNavPage) {
+                                        window.location.href = 'office-nav.html';
+                                        return;
+                                    }
+                                } catch (e) { console.warn('導覽頁導向失敗（忽略）：', e); }
+                            }
                             if (wasNotInitialized) {
                                 initializeAppUI();
                             } else {
