@@ -516,7 +516,7 @@
                                     if (typeof showToast === 'function') showToast('您已離職、無法登入', true);
                                     else alert('您已離職、無法登入');
                                 }
-                                signOut(auth);
+                                signOut(window.__auth);
                                 return;
                             }
                             if (wasNotInitialized) {
@@ -524,10 +524,10 @@
                             } else {
                                 updateHeaderAvatar();
                             }
-                        } else { signOut(auth); }
+                        } else { signOut(window.__auth); }
                     }, (error) => {
                         console.error("Error listening to user document:", error);
-                        signOut(auth);
+                        signOut(window.__auth);
                     });
                     state.activeListeners.push(unsubscribe);
                 } else {
@@ -8680,7 +8680,7 @@
                 logoutBtn.addEventListener('click', async () => {
                     try {
                         showLoading(true);
-                        await signOut(auth);
+                        await signOut(window.__auth);
                         showToast("已成功登出");
                         window.location.reload();
                     } catch (error) {
@@ -8719,7 +8719,7 @@
                         await uploadBytes(avatarRef, blob, { contentType: 'image/jpeg' });
                         const url = await getDownloadURL(avatarRef);
 
-                        await updateDoc(doc(db, 'users', state.currentUser.uid), { avatarUrl: url });
+                        await updateDoc(doc(window.__db, 'users', state.currentUser.uid), { avatarUrl: url });
                         state.currentUserData.avatarUrl = url;
                         document.getElementById('modal-avatar').src = url;
                         const header = document.getElementById('header-avatar');
@@ -8814,7 +8814,7 @@
 
                 logoutBtn.addEventListener('click', async () => {
                     close();
-                    await signOut(auth);
+                    await signOut(window.__auth);
                     showToast("您已成功登出");
                 });
 
@@ -8831,7 +8831,7 @@
                         container.innerHTML = '<div class="text-sm text-gray-500">載入中...</div>';
                         const now = new Date();
                         const q = query(
-                            collection(db, 'leaves'),
+                            collection(window.__db, 'leaves'),
                             where('userId', '==', uid)
                         );
                         const snap = await getDocs(q);
