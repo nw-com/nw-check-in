@@ -8491,6 +8491,7 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                     e.preventDefault();
                     showLoading(true);
                     errorEl.textContent = '';
+                    const db = window.__db;
 
                     // --- Form Data Collection ---
                     const name = document.getElementById('user-name').value;
