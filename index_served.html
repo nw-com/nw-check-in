@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>西北-台北打卡系統</title>
+    <title>西北勤務打卡系統</title>
     <link rel="icon" type="image/png" href="https://static.wixstatic.com/ficons/6148f9_bb3f0e3c08bd4a3e83840553497fd866~mv2.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -168,7 +168,7 @@
     <div id="login-page" class="w-full max-w-sm p-8 bg-white rounded-2xl shadow-lg hide">
         <div class="text-center mb-8">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-                <h1 class="text-2xl font-bold text-gray-800 mt-4">西北-台北打卡系統</h1>
+            <h1 class="text-2xl font-bold text-gray-800 mt-4">西北勤務打卡系統</h1>
             <p class="text-gray-500">雲端測試版V2.2.0</p>
         </div>
         <form id="login-form">
@@ -204,7 +204,7 @@
         <header class="h-[70px] flex items-center justify-between px-4 border-b border-gray-200 flex-shrink-0">
             <div class="flex items-center space-x-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-                    <span class="text-lg font-bold text-gray-800">西北-台北打卡系統</span>
+                <span class="text-lg font-bold text-gray-800">西北勤務打卡系統</span>
                 <span id="welcome-message" class="text-sm text-gray-600 ml-2"></span>
             </div>
             <button id="profile-avatar-btn">
@@ -460,18 +460,6 @@
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
-                            // 登入後導向導覽頁：管理員、人事、高階主管
-                            if (wasNotInitialized) {
-                                try {
-                                    const role = state.currentUserData?.role;
-                                    const shouldRedirect = ['admin','hr','manager'].includes(role);
-                                    const onNavPage = /office-nav\.html$/i.test(window.location.pathname);
-                                    if (shouldRedirect && !onNavPage) {
-                                        window.location.href = 'office-nav.html';
-                                        return;
-                                    }
-                                } catch (e) { console.warn('導覽頁導向失敗（忽略）：', e); }
-                            }
                             if (wasNotInitialized) {
                                 initializeAppUI();
                             } else {
@@ -7474,9 +7462,6 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
             }
 
             function renderProfileModal() {
-                // 使用全域 Firebase 參考，避免區域作用域造成未定義
-                const authRef = window.__auth || (typeof auth !== 'undefined' ? auth : null);
-                const dbRef = window.__db || (typeof db !== 'undefined' ? db : null);
                 const modalId = `profile-modal-${Date.now()}`;
                 const close = () => document.getElementById(modalId)?.remove();
 
@@ -7538,7 +7523,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 logoutBtn.addEventListener('click', async () => {
                     try {
                         showLoading(true);
-                        await signOut(authRef);
+                        await signOut(auth);
                         showToast("a�P2a??a??c??a?o");
                         window.location.reload();
                     } catch (error) {
@@ -7567,7 +7552,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         await uploadBytes(avatarRef, blob, { contentType: 'image/jpeg' });
                         const url = await getDownloadURL(avatarRef);
 
-                        await updateDoc(doc(dbRef, 'users', state.currentUser.uid), { avatarUrl: url });
+                        await updateDoc(doc(db, 'users', state.currentUser.uid), { avatarUrl: url });
                         state.currentUserData.avatarUrl = url;
                         document.getElementById('modal-avatar').src = url;
                         const header = document.getElementById('header-avatar');
@@ -7677,7 +7662,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
                 logoutBtn.addEventListener('click', async () => {
                     close();
-                    await signOut(authRef);
+                    await signOut(auth);
                     showToast("a?�La�P2a??a??c??a?o");
                 });
 
@@ -7694,7 +7679,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         container.innerHTML = '<div class="text-sm text-gray-500">e??a?�Da�M-...</div>';
                         const now = new Date();
                         const q = query(
-                            collection(dbRef, 'leaves'),
+                            collection(db, 'leaves'),
                             where('userId', '==', uid)
                         );
                         const snap = await getDocs(q);
