@@ -8291,6 +8291,21 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                                     </select>
                                 </div>
 
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">所屬公司（可複選）</label>
+                                    <div class="mt-1 flex items-center gap-4">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-tp" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TP') ? 'checked' : ''}>
+                                            <span>TP ｜ 台北</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-ty" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TY') ? 'checked' : ''}>
+                                            <span>TY ｜ 桃園</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500">可複選。兩者皆勾選時，登入後導向導覽頁。</p>
+                                </div>
+
                                 ${isEditing ? `
                                 <div class="flex items-center gap-2">
                                     <input type="checkbox" id="user-resigned" class="h-4 w-4" ${user.resigned ? 'checked' : ''} />
