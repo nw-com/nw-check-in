@@ -204,7 +204,7 @@
         <header class="h-[70px] flex items-center justify-between px-4 border-b border-gray-200 flex-shrink-0">
             <div class="flex items-center space-x-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-                <span class="text-lg font-bold text-gray-800">西北勤務打卡系統</span>
+                <span id="header-title" class="text-lg font-bold text-gray-800 cursor-pointer">西北勤務打卡系統</span>
                 <span id="welcome-message" class="text-sm text-gray-600 ml-2"></span>
             </div>
             <button id="profile-avatar-btn">
@@ -370,6 +370,26 @@
             if(loadingScreen) loadingScreen.classList.toggle('hide', !show);
         }
 
+        // Branch setup: default TP, overridable via ?branch=TY
+        window.__branch = new URLSearchParams(location.search).get('branch') || 'TP';
+        // Branch-scoped Firestore helpers（使用全域 Firestore 函式）
+                window.__branchHelpers = {
+                    branchCollection: (name) => window.__fs.collection(window.__db, 'branches', window.__branch, name),
+                    branchDoc: (...path) => window.__fs.doc(window.__db, 'branches', window.__branch, ...path)
+                };
+
+        // e??c??a??a??c??a??c?�L e??a�P��c??a??a?�La??c?�L a??a??a?�La??c?��? (title)
+        try {
+            const titleEl = document.getElementById('header-title');
+            if (titleEl) {
+                const branchLabel = window.__branch === 'TY' ? '桃園' : '台北';
+                titleEl.textContent = `西北-${branchLabel}打卡系統`;
+                titleEl.addEventListener('click', () => {
+                    location.href = 'branch.html';
+                });
+            }
+        } catch (e) { /* noop */ }
+
         function initializeAppLogic() {
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
@@ -460,6 +480,17 @@
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
+                            // e??a�P��c??a?? (admin/hr/manager) e??i??e??c?��? branch.html
+                            try {
+                                const params = new URLSearchParams(location.search);
+                                const fromNav = params.get('fromNav') === '1';
+                                const role = state.currentUserData?.role;
+                                const canNavigate = ['admin','hr','manager'].includes(role);
+                                if (canNavigate && !fromNav) {
+                                    location.href = 'branch.html';
+                                    return;
+                                }
+                            } catch (e) {}
                             if (wasNotInitialized) {
                                 initializeAppUI();
                             } else {
@@ -627,7 +658,7 @@
                         endDate.setHours(23, 59, 59, 999);
                         
                         // a?�Dec�Fa??a?!e�L?e??i??a??c?��a??a?�Da??e??a??i??e??a??e??a??c���Fa??e?�a��?i??
-                        const clockInRef = collection(db, 'clockInRecords');
+const clockInRef = window.__branchHelpers.branchCollection('clockInRecords');
                         const q = query(clockInRef);
                         const qs = await getDocs(q);
                         
@@ -858,7 +889,7 @@
                 
                 // a??ec|a??Firebasec?2a??a?�a?�Xe�L-c?Ri??a??a�M?e??a!?UI
                 try {
-                    const settingsRef = doc(db, "settings", "general");
+const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                     getDoc(settingsRef).then((docSnap) => {
                         if (docSnap.exists()) {
                             const settings = docSnap.data();
@@ -930,7 +961,7 @@
                         const friday = getWeekFriday(now);
                         const isoFriday = formatYMD(friday);
 
-                        const settingsRef = doc(db, 'settings', 'general');
+                        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         const s = await getDoc(settingsRef);
                         const roster = s.exists() ? (s.data().fridayDutyRoster || {}) : {};
                         const ids = roster[isoFriday] || [];
@@ -983,7 +1014,7 @@
                             const tsStart = Timestamp?.fromDate ? Timestamp.fromDate(start) : start;
                             const tsEnd = Timestamp?.fromDate ? Timestamp.fromDate(end) : end;
                             const q = query(
-                                collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                                 where('userId', '==', user.uid),
                                 where('timestamp', '>=', tsStart),
                                 where('timestamp', '<=', tsEnd)
@@ -1084,7 +1115,7 @@
                             myStatusFound = true;
                             (async () => {
                                 try {
-                                    const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                                     const q = query(recordsRef, where('userId', '==', state.currentUser.uid), orderBy('timestamp', 'desc'), limit(1));
                                     const snap = await getDocs(q);
                                     let innerHTML = '';
@@ -1122,7 +1153,7 @@
                            const latestMap = {};
                            await Promise.all(visibleUsersList.map(async (u) => {
                                try {
-                                   const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                    const latestSnap = await getDocs(qLatest);
                                    latestMap[u.id] = latestSnap.empty ? null : latestSnap.docs[0].data();
                                } catch (e) {
@@ -1226,7 +1257,7 @@
                         try {
                             await Promise.all(visibleUsersList.map(async (u) => {
                                 try {
-                                    const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                     const latestSnap = await getDocs(qLatest);
                                     if (!latestSnap.empty) {
                                         latestMap[u.id] = latestSnap.docs[0].data();
@@ -1331,7 +1362,7 @@
                     try {
                         Promise.all(visibleUsersList.map(async (u) => {
                             try {
-                                const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                 const latestSnap = await getDocs(qLatest);
                                 let dt = null;
                                 if (!latestSnap.empty) {
@@ -1482,20 +1513,20 @@
                 };
 
                 const fetchWorkdays = async () => {
-                    const db = window.__db; const { doc, getDoc } = window.__fs;
-                    let daysMap = {};
-                    try {
-                        const settingsDocSnap = await getDoc(doc(db, 'settings', `workdays_${ymKey}`));
-                        if (settingsDocSnap.exists()) {
-                            const sd = settingsDocSnap.data();
-                            if (sd && sd.days && typeof sd.days === 'object') {
-                                daysMap = { ...sd.days };
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('讀取全域上班設定失敗', e);
-                    }
-                    try {
+                    const db = window.__db; const { doc, getDoc } = window.__fs; 
+                    let daysMap = {}; 
+                    try { 
+                        const settingsDocSnap = await getDoc(window.__branchHelpers.branchDoc('settings', `workdays_${ymKey}`)); 
+                        if (settingsDocSnap.exists()) { 
+                            const sd = settingsDocSnap.data(); 
+                            if (sd && sd.days && typeof sd.days === 'object') { 
+                                daysMap = { ...sd.days }; 
+                            } 
+                        } 
+                    } catch (e) { 
+                        console.warn('讀取全域上班設定失敗', e); 
+                    } 
+                    try { 
                         const user = window.__auth?.currentUser;
                         if (user) {
                             const userDocSnap = await getDoc(doc(db, 'users', user.uid, 'workdays', ymKey));
@@ -1709,7 +1740,7 @@
                                         const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
                                         const user = window.__auth?.currentUser; const db = window.__db; const { doc, getDoc, setDoc, arrayUnion, serverTimestamp } = window.__fs;
                                         if (isAdmin && user) {
-                                            const settingsRef = doc(db, 'settings', 'location');
+                        const settingsRef = window.__branchHelpers.branchDoc('settings', 'location');
                                             // a��?a?oa??c?Rc?ca??
                                             const locEntry = {
                                                 name: locationText,
@@ -1883,7 +1914,7 @@
                         return;
                     }
                     const db = window.__db; const { collection, where, query, getDocs } = window.__fs;
-                    let q = query(collection(db, 'leaves'), where('userId', '==', user.uid));
+let q = query(window.__branchHelpers.branchCollection('leaves'), where('userId', '==', user.uid));
                     if (status !== 'all') { q = query(q, where('status', '==', status)); }
                     // c��?e??a??ao?a?�De??a?? Firestore c���Fa??e?�a��?i??a?1c?�La??c?��a??ao?i??e?�De?�e|?i??
 
@@ -2120,7 +2151,7 @@
                                 const fs = window.__fs; const db = window.__db;
                                 if (fs && db) {
                                     const { doc, getDoc } = fs;
-                                    const settingsRef = doc(db, 'settings', 'general');
+                                    const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                                     const snap = await getDoc(settingsRef);
                                     const roster = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
                                     const auth = window.__auth;
@@ -2190,7 +2221,7 @@
                         const db = window.__db; const { addDoc, collection, serverTimestamp, Timestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
                         if (!user) throw new Error('a�X?a?ac??a?�D');
                         // a?�ga?oe??a??e�L?e??i??a?�Da�X?a??c?oa?Ra??i??
-                        await addDoc(collection(db, 'leaves'), {
+await addDoc(window.__branchHelpers.branchCollection('leaves'), {
                             userId: user.uid,
                             userName: state.currentUserData?.name || '',
                             reason: reason,
@@ -2375,7 +2406,7 @@
                         const db = window.__db; const { addDoc, collection, Timestamp, serverTimestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
                         if (!user) throw new Error('a�X?a?ac??a?�D');
                         // a?�ga?oc?1aR?a??a??e�L?e??
-                        await addDoc(collection(db, 'specialDuties'), {
+await addDoc(window.__branchHelpers.branchCollection('specialDuties'), {
                             userId: user.uid,
                             userName: state.currentUserData?.name || '',
                             dutyName: dutyName,
@@ -2471,7 +2502,7 @@
                     const endOfDay = new Date(selectedDate);
                     endOfDay.setHours(23, 59, 59, 999);
                     
-                    const recordsRef = collection(db, "clockInRecords");
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     // a??a??a??c?�Le�?a?�Dec�Fi??e??a??e??a??c���Fa??e?�a��?i??a?�Da??a?�La??c?��e??a??
                     const q = query(recordsRef, where("userId", "==", state.currentUser.uid));
 
@@ -2730,7 +2761,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex, 1)) : start;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)) : end;
                     const q = query(
-                        collection(window.__db, 'clockInRecords'),
+                        window.__branchHelpers.branchCollection('clockInRecords'),
                         where('userId', '==', state.currentUser.uid),
                         where('timestamp', '>=', startTS),
                         where('timestamp', '<=', endTS)
@@ -2742,7 +2773,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     // 請假資料（覆蓋該月任何一天）
                     let leaves = [];
                     try {
-                        const lq = query(collection(window.__db, 'leaves'), where('userId','==', state.currentUser.uid));
+                        const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', state.currentUser.uid));
                         const ls = await getDocs(lq);
                         ls.forEach(doc => leaves.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取請假失敗', e); }
@@ -2750,7 +2781,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     // 特殊勤務（值班）資料
                     let duties = [];
                     try {
-                        const dq = query(collection(window.__db, 'specialDuties'), where('userId','==', state.currentUser.uid));
+                        const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', state.currentUser.uid));
                         const ds = await getDocs(dq);
                         ds.forEach(doc => duties.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -2760,7 +2791,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     try {
                         const { doc, getDoc } = window.__fs || {};
                         if (doc && getDoc && db) {
-                            const settingsRef = doc(db, 'settings', 'general');
+                            const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                             const settingsSnap = await getDoc(settingsRef);
                             fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                         }
@@ -2929,7 +2960,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
 
                         // 該使用者該月的打卡紀錄
                         const q = query(
-                            collection(window.__db, 'clockInRecords'),
+                            window.__branchHelpers.branchCollection('clockInRecords'),
                             where('userId', '==', userId),
                             where('timestamp', '>=', startTS),
                             where('timestamp', '<=', endTS)
@@ -2941,7 +2972,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         // 請假資料（覆蓋該月任何一天）
                         let leaves = [];
                         try {
-                            const lq = query(collection(window.__db, 'leaves'), where('userId','==', userId));
+                            const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', userId));
                             const ls = await getDocs(lq);
                             ls.forEach(docu => leaves.push({ id: docu.id, ...docu.data() }));
                         } catch(e) { console.warn('讀取請假失敗', e); }
@@ -2949,7 +2980,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         // 特殊勤務（值班）資料
                         let duties = [];
                         try {
-                            const dq = query(collection(window.__db, 'specialDuties'), where('userId','==', userId));
+                            const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', userId));
                             const ds = await getDocs(dq);
                             ds.forEach(docu => duties.push({ id: docu.id, ...docu.data() }));
                         } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -2958,7 +2989,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         let fridayDutyRoster = {};
                         try {
                             if (doc && getDoc && db) {
-                                const settingsRef = doc(db, 'settings', 'general');
+                                const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                                 const settingsSnap = await getDoc(settingsRef);
                                 fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                             }
@@ -3186,7 +3217,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         let fridayDutyRoster = {};
                         try {
                             if (doc && getDoc && db) {
-                                const settingsRef = doc(db, 'settings', 'general');
+                                const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                                 const settingsSnap = await getDoc(settingsRef);
                                 fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                             }
@@ -3225,7 +3256,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 const userName = u.name || u.displayName || u.email || userId;
                                 // 該使用者該月的打卡紀錄
                                 const q = query(
-                                    collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                                     where('userId', '==', userId),
                                     where('timestamp', '>=', startTS),
                                     where('timestamp', '<=', endTS)
@@ -3799,7 +3830,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     if (!modEl) return;
                     modEl.innerHTML = `<div class=\"p-4 text-center text-gray-500\"><div class=\"flex items-center justify-center\"><i data-lucide=\"loader\" class=\"w-5 h-5 mr-2 animate-spin\"></i>載入修改紀錄...</div></div>`;
                     try {
-                        const qs = await getDocs(query(collection(db, 'clockInRecords'), orderBy('timestamp','desc'), limit(200)));
+const qs = await getDocs(query(window.__branchHelpers.branchCollection('clockInRecords'), orderBy('timestamp','desc'), limit(200)));
                         const selectedUser = filterUserEl.value || '';
                         const selectedDate = filterDateEl.value || '';
                         const items = [];
@@ -3870,7 +3901,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 deviceId: 'retro-approval',
                                 createdAt: serverTimestamp()
                             };
-                            await addDoc(collection(db, 'clockInRecords'), record);
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), record);
                             await updateDoc(ref, { status: 'approved', approvedAt: serverTimestamp(), approvedBy: user.uid });
                             renderList();
                         } catch (err) {
@@ -3978,7 +4009,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                                 deviceId: 'manual-admin',
                                 createdAt: serverTimestamp()
                             };
-                            await addDoc(collection(db, 'clockInRecords'), record);
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), record);
                             showToast('已新增打卡紀錄');
                             backdrop.remove(); modal.remove();
                         } catch (err) {
@@ -4121,7 +4152,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     const selectedDate = new Date(dateInput.value);
                     const startOfDay = new Date(selectedDate); startOfDay.setHours(0,0,0,0);
                     const endOfDay = new Date(selectedDate); endOfDay.setHours(23,59,59,999);
-                    const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                     const sel = userSelect.value || '__ALL__';
@@ -4561,8 +4592,8 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         });
                     };
                     try {
-                        // 全域設定：settings/workdays_YYYY-MM
-                        const settingsDocSnap = await getDoc(doc(db, 'settings', `workdays_${ymKey}`));
+                        // 分館設定：branches/{branch}/settings/workdays_YYYY-MM
+                        const settingsDocSnap = await getDoc(window.__branchHelpers.branchDoc('settings', `workdays_${ymKey}`));
                         if (settingsDocSnap.exists()) {
                             const sd = settingsDocSnap.data();
                             if (sd && sd.days) {
@@ -4601,7 +4632,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     // 特殊勤務（活動/支援等）
                     let duties = [];
                     try {
-                        const dq = query(collection(db, 'specialDuties'), where('userId','==', state.currentUser.uid));
+                        const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', state.currentUser.uid));
                         const ds = await getDocs(dq);
                         ds.forEach(doc => duties.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -4609,14 +4640,14 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     let fridayDutyRoster = {};
                     try {
                         const { doc, getDoc } = window.__fs || {};
-                        const settingsRef = doc(db, 'settings', 'general');
+                        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         const settingsSnap = await getDoc(settingsRef);
                         fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                     } catch (e) { console.warn('讀取值班名單失敗', e); }
                     // 請假資料（覆蓋該月任何一天）
                     let leaves = [];
                     try {
-                        const lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+                        const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', state.currentUser.uid));
                         const ls = await getDocs(lq);
                         ls.forEach(doc => leaves.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取請假失敗', e); }
@@ -4735,7 +4766,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 startOfDay.setHours(0, 0, 0, 0);
                 const endOfDay = new Date(selectedDate);
                 endOfDay.setHours(23, 59, 59, 999);
-                const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 const { Timestamp } = window.__fs || {};
                 const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                 const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
@@ -5041,7 +5072,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     renderHeader(daysInMonth);
 
                     const selectedUserId = userSelect.value;
-                    const recordsRef = collection(db, "clockInRecords");
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
@@ -5091,7 +5122,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         // 讀取請假（僅計入已核准）
                         const leaveDaySetMap = new Map(); // userId -> Set(dayNumbers)
                         try {
-                            const leavesRef = collection(window.__db, 'leaves');
+                            const leavesRef = window.__branchHelpers.branchCollection('leaves');
                             let qLeaves;
                             if (selectedUserId === 'all') {
                                 qLeaves = query(leavesRef, where('status','==','approved'));
@@ -5117,7 +5148,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         // 讀取特殊勤務（跨月以 startTime 或 endTime 落在本月即計入）
                         const specialDutyDaySetMap = new Map(); // userId -> Set(dayNumbers)
                         try {
-                            const sdRef = collection(db, 'specialDuties');
+                            const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                             const startTS2 = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                             const endTS2 = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
                             let q1, q2;
@@ -5403,7 +5434,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                     endOfDay.setHours(23, 59, 59, 999);
                     const selectedUserId = userSelect.value;
                     
-                    const recordsRef = collection(db, "clockInRecords");
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
@@ -6262,7 +6293,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                 lucide.createIcons();
                 
                 // a?? Firebase eR�a??e�L-aR?
-                const settingsRef = doc(db, "settings", "general");
+const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                 getDoc(settingsRef).then((docSnap) => {
                     if (docSnap.exists()) {
                         const settings = docSnap.data();
@@ -6455,7 +6486,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                             .map(cb => cb.dataset.userId);
                         
                         // a?2a-?a?�X Firebase
-                        await setDoc(doc(db, "settings", "general"), {
+await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                             showEmployeeStatus,
                             visibleUsers,
                             communityStatusAllowedUsers,
@@ -8043,7 +8074,7 @@ const statusText = getStatusDisplayText(record.type || '未知', record.location
                         }
                         
                         try {
-                            await addDoc(collection(db, "clockInRecords"), recordData);
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordData);
                         } catch (e) {
                             console.error('a?�Xa�F? clockInRecords a?��a??i??', e?.code, e?.message || e, { keys: Object.keys(recordData), type: recordData.type, locationIsGeoPoint: recordData.location instanceof GeoPoint, photosLen: recordData.photoUrls.length, descLen: recordData.descriptions.length });
                             throw e;

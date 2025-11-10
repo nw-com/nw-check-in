@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>選擇分館｜西北勤務打卡系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100">
+  <div class="max-w-md mx-auto mt-10 bg-white rounded-lg shadow p-6">
+    <div class="flex items-center space-x-2 mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+      <h1 class="text-xl font-bold">選擇分館</h1>
+    </div>
+    <p id="role-note" class="text-sm text-gray-600 mb-6">僅管理員、人事、高階主管可進入導覽頁。</p>
+
+    <div class="grid grid-cols-1 gap-4" id="branch-grid" style="display:none;">
+      <button id="btn-tp" class="w-full border rounded-lg p-4 hover:bg-gray-50 flex items-center justify-between">
+        <span class="font-semibold">TP｜台北</span>
+        <i data-lucide="arrow-right"></i>
+      </button>
+      <button id="btn-ty" class="w-full border rounded-lg p-4 hover:bg-gray-50 flex items-center justify-between">
+        <span class="font-semibold">TY｜桃園</span>
+        <i data-lucide="arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <script type="module">
+    // Firebase 設定（與 index 同一專案與帳號）
+    const firebaseConfig = {
+      apiKey: "AIzaSyAzgs-DZbCYHP7wEM1iWi948yL77ikigBg",
+      authDomain: "nw-check-in.firebaseapp.com",
+      projectId: "nw-check-in",
+      storageBucket: "nw-check-in.appspot.com",
+      messagingSenderId: "1060821780559",
+      appId: "1:1060821780559:web:2638d630526d54f1a5023a",
+      measurementId: "G-61Q1QNNRD2"
+    };
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 權限檢查：僅 admin/hr/manager 可使用導覽頁
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        location.href = 'index.html';
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const role = snap.exists() ? snap.data().role : null;
+        const canNavigate = ['admin','hr','manager'].includes(role);
+        if (!canNavigate) {
+          location.href = 'index.html';
+          return;
+        }
+        document.getElementById('role-note').textContent = `歡迎 ${snap.data().name || user.email}（${role}），請選擇分館。`;
+        document.getElementById('branch-grid').style.display = 'grid';
+      } catch (e) {
+        console.error(e);
+        location.href = 'index.html';
+      }
+    });
+
+    // 分館按鈕導向
+    document.getElementById('btn-tp').addEventListener('click', () => {
+      location.href = 'index.html?branch=TP&fromNav=1';
+    });
+    document.getElementById('btn-ty').addEventListener('click', () => {
+      // 使用 index.html 但切換為 TY 分館（也可改為 ty.html）
+      location.href = 'index.html?branch=TY&fromNav=1';
+    });
+
+    // 圖示初始化
+    try { window.lucide?.createIcons?.(); } catch (e) {}
+  </script>
+</body>
+</html>

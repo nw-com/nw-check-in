@@ -1116,7 +1116,7 @@ function openSpecialDutyModal() {
             };
             
             // 保存到 Firestore
-            const dutyRef = await addDoc(collection(window.__db, 'specialDuties'), dutyData);
+            const dutyRef = await addDoc(window.__branchHelpers.branchCollection('specialDuties'), dutyData);
             console.log('特殊勤務記錄已創建:', dutyRef.id);
             
             // 更新用戶狀態
@@ -1215,7 +1215,7 @@ async function loadAutoClockOutSettings() {
         }
 
         const { doc, getDoc } = window.__fs;
-        const settingsRef = doc(window.__db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
         const settingsSnap = await getDoc(settingsRef);
         autoClockOutSettings.loaded = true;
 
@@ -1330,7 +1330,7 @@ async function performAutoClockOut() {
         }
         
         // 保存打卡記錄
-        await addDoc(collection(window.__db, 'clockInRecords'), recordData);
+        await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordData);
         
         // 更新用戶狀態為「已下班-未打卡」
         const userUpdateData = {
@@ -1404,7 +1404,7 @@ async function checkAndHandleOvertimeClockOut() {
         
         // 取得最近一次「上班」打卡紀錄的時間（不依賴 users 的 lastClockInTime）
         const q = query(
-            collection(window.__db, 'clockInRecords'),
+            window.__branchHelpers.branchCollection('clockInRecords'),
             where('userId', '==', user.uid),
             where('type', '==', '上班'),
             orderBy('timestamp', 'desc'),
@@ -1528,7 +1528,7 @@ async function checkAllUsersOvertimeStatus() {
                             recordData.locationName = locationName;
                         }
                         const { addDoc, updateDoc, doc, serverTimestamp } = window.__fs;
-                        await addDoc(collection(window.__db, 'clockInRecords'), recordData);
+        await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordData);
                         await updateDoc(doc(window.__db, 'users', ou.userId), {
                             status: '已下班-未打卡',
                             clockInStatus: '已下班-未打卡',

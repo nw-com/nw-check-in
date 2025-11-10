@@ -206,7 +206,7 @@
         <header class="h-[70px] flex items-center justify-between px-4 border-b border-gray-200 flex-shrink-0">
             <div class="flex items-center space-x-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-                <span class="text-lg font-bold text-gray-800">西北勤務打卡系統</span>
+                <span id="header-title" class="text-lg font-bold text-gray-800 cursor-pointer">西北勤務打卡系統</span>
                 <span id="welcome-message" class="text-sm text-gray-600 ml-2"></span>
             </div>
             <button id="profile-avatar-btn">
@@ -351,6 +351,14 @@
             }
         };
 
+        // 分館設定：預設 TP，可用 ?branch=TY 切換
+        window.__branch = new URLSearchParams(location.search).get('branch') || 'TP';
+        // 分館 Firestore 輔助（透過 window.__fs 的 Firestore API）
+        window.__branchHelpers = {
+            branchCollection: (name) => window.__fs.collection(window.__db, 'branches', window.__branch, name),
+            branchDoc: (...path) => window.__fs.doc(window.__db, 'branches', window.__branch, ...path)
+        };
+
         // Global State
         const state = {
             currentUser: null,
@@ -413,9 +421,29 @@
         
         const loadingScreen = document.getElementById('loading-screen');
         
-        function showLoading(show) {
-            if(loadingScreen) loadingScreen.classList.toggle('hide', !show);
-        }
+                function showLoading(show) {
+                    if(loadingScreen) loadingScreen.classList.toggle('hide', !show);
+                }
+
+                // Branch setup: default TP, overridable via ?branch=TY
+                window.__branch = new URLSearchParams(location.search).get('branch') || 'TP';
+                // Branch-scoped Firestore helpers（透過 window.__fs 的 Firestore API）
+                window.__branchHelpers = {
+                    branchCollection: (name) => window.__fs.collection(window.__db, 'branches', window.__branch, name),
+                    branchDoc: (...path) => window.__fs.doc(window.__db, 'branches', window.__branch, ...path)
+                };
+
+        // 依分館設定更新抬頭文字，並加上返回導覽頁的點選
+        try {
+            const titleEl = document.getElementById('header-title');
+            if (titleEl) {
+                const branchLabel = window.__branch === 'TY' ? '桃園' : '台北';
+                titleEl.textContent = `西北-${branchLabel}打卡系統`;
+                titleEl.addEventListener('click', () => {
+                    location.href = 'branch.html';
+                });
+            }
+        } catch (e) { /* noop */ }
 
         function initializeAppLogic() {
             const app = initializeApp(firebaseConfig);
@@ -507,6 +535,17 @@
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
+                            // 具備導覽權限角色：管理員、人事、高階主管；首次登入導向導覽頁
+                            try {
+                                const params = new URLSearchParams(location.search);
+                                const fromNav = params.get('fromNav') === '1';
+                                const role = state.currentUserData?.role;
+                                const canNavigate = ['admin','hr','manager'].includes(role);
+                                if (canNavigate && !fromNav) {
+                                    location.href = 'branch.html';
+                                    return;
+                                }
+                            } catch (e) {}
                             // 若標記為離職，立即登出並提示
                             if (state.currentUserData && state.currentUserData.resigned === true) {
                                 try {
@@ -688,7 +727,7 @@
                         endDate.setHours(23, 59, 59, 999);
                         
                         // 查詢打卡記錄（前端依日期過濾，避免複合索引需求）
-                        const clockInRef = collection(db, 'clockInRecords');
+const clockInRef = window.__branchHelpers.branchCollection('clockInRecords');
                         const q = query(clockInRef);
                         const qs = await getDocs(q);
                         
@@ -933,7 +972,7 @@
                 
                 // 嘗試從Firebase獲取最新設置，但不阻塞UI
                 try {
-                    const settingsRef = doc(db, "settings", "general");
+const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                     getDoc(settingsRef).then((docSnap) => {
                         if (docSnap.exists()) {
                             const settings = docSnap.data();
@@ -1006,7 +1045,7 @@
                         const friday = getWeekFriday(now);
                         const isoFriday = formatYMD(friday);
 
-                        const settingsRef = doc(db, 'settings', 'general');
+                        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         const s = await getDoc(settingsRef);
                         const roster = s.exists() ? (s.data().fridayDutyRoster || {}) : {};
                         const ids = roster[isoFriday] || [];
@@ -1060,7 +1099,7 @@
                             const tsStart = Timestamp?.fromDate ? Timestamp.fromDate(start) : start;
                             const tsEnd = Timestamp?.fromDate ? Timestamp.fromDate(end) : end;
                             const q = query(
-                                collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                                 where('userId', '==', user.uid),
                                 where('timestamp', '>=', tsStart),
                                 where('timestamp', '<=', tsEnd)
@@ -1100,7 +1139,7 @@
                         try {
                             const uid = state.currentUser?.uid;
                             if (!uid) return;
-                            const q = query(collection(db, 'clockInRecords'), where('userId', '==', uid), orderBy('timestamp', 'desc'), limit(1));
+const q = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', uid), orderBy('timestamp', 'desc'), limit(1));
                             const snap = await getDocs(q);
                             let innerHTML = '';
                             if (!snap.empty) {
@@ -1156,7 +1195,7 @@
                            const latestMap = {};
                            await Promise.all(visibleUsersList.map(async (u) => {
                                try {
-                                   const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                    const latestSnap = await getDocs(qLatest);
                                    latestMap[u.id] = latestSnap.empty ? null : latestSnap.docs[0].data();
                                } catch (e) {
@@ -1290,7 +1329,7 @@
                         try {
                             await Promise.all(visibleUsersList.map(async (u) => {
                                 try {
-                                    const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                     const latestSnap = await getDocs(qLatest);
                                     if (!latestSnap.empty) {
                                         // 儲存整筆最新紀錄資料以便取得 type/locationName/dutyType/timestamp
@@ -1399,7 +1438,7 @@
                                 try { myStatusFound = true; } catch (e) {}
                                 (async () => {
                                     try {
-                                        const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                                         const q = query(recordsRef, where('userId', '==', state.currentUser.uid), orderBy('timestamp', 'desc'), limit(1));
                                         const snap = await getDocs(q);
                                         let innerHTML = '';
@@ -1435,7 +1474,7 @@
                         try {
                             Promise.all(visibleUsersList.map(async (u) => {
                                 try {
-                                    const qLatest = query(collection(db, 'clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
+const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'), where('userId', '==', u.id), orderBy('timestamp', 'desc'), limit(1));
                                     const latestSnap = await getDocs(qLatest);
                                     let dt = null;
                                     if (!latestSnap.empty) {
@@ -1665,9 +1704,9 @@
                                             // 僅管理員可寫入 Firestore；一般使用者改存 localStorage
                                             const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
                                             const user = window.__auth?.currentUser;
-                                            if (isAdmin && user) {
-                                                const { updateDoc, doc } = window.__fs; const db = window.__db;
-                                                updateDoc(doc(db, 'users', user.uid), { savedLocations: state.savedLocations })
+                                        if (isAdmin && user) {
+                                            const { updateDoc, doc } = window.__fs; const db = window.__db;
+                                            updateDoc(doc(db, 'users', user.uid), { savedLocations: state.savedLocations })
                                                     .catch(err => console.warn('保存地址到設定失敗', err));
                                             } else {
                                                 try {
@@ -1684,7 +1723,7 @@
                                         const isAdmin = state.currentUserData && state.currentUserData.role === 'admin';
                                         const user = window.__auth?.currentUser; const db = window.__db; const { doc, getDoc, setDoc, arrayUnion, serverTimestamp } = window.__fs;
                                         if (isAdmin && user) {
-                                            const settingsRef = doc(db, 'settings', 'location');
+                                            const settingsRef = window.__branchHelpers.branchDoc('settings', 'location');
                                             // 構建位置物件
                                             const locEntry = {
                                                 name: locationText,
@@ -1839,7 +1878,7 @@
                     let daysMap = {};
                     try {
                         // 全域設定：settings/workdays_YYYY-MM
-                        const settingsDocSnap = await getDoc(doc(db, 'settings', `workdays_${ymKey}`));
+                        const settingsDocSnap = await getDoc(window.__branchHelpers.branchDoc('settings', `workdays_${ymKey}`));
                         if (settingsDocSnap.exists()) {
                             const sd = settingsDocSnap.data();
                             if (sd && sd.days && typeof sd.days === 'object') {
@@ -1988,7 +2027,7 @@
                         return;
                     }
                     const db = window.__db; const { collection, where, query, getDocs } = window.__fs;
-                    let q = query(collection(db, 'leaves'), where('userId', '==', user.uid));
+let q = query(window.__branchHelpers.branchCollection('leaves'), where('userId', '==', user.uid));
                     if (status !== 'all') { q = query(q, where('status', '==', status)); }
                     // 移除排序以避免 Firestore 索引需求，改用前端排序（若需要）
 
@@ -2261,7 +2300,7 @@
                         const db = window.__db; const { addDoc, collection, serverTimestamp, Timestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
                         if (!user) throw new Error('尚未登入');
                         // 創建請假記錄（合併日期+時間），並寫入相容欄位
-                        await addDoc(collection(db, 'leaves'), {
+await addDoc(window.__branchHelpers.branchCollection('leaves'), {
                             userId: user.uid,
                             userName: state.currentUserData?.name || '',
                             reason: reason,
@@ -2328,7 +2367,7 @@
                                 const fs = window.__fs; const db = window.__db;
                                 if (fs && db) {
                                     const { doc, getDoc } = fs;
-                                    const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                                     const snap = await getDoc(settingsRef);
                                     const roster = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
                                     const auth = window.__auth;
@@ -2504,7 +2543,7 @@
                         const db = window.__db; const { addDoc, collection, Timestamp, serverTimestamp, updateDoc, doc } = window.__fs; const user = window.__auth?.currentUser;
                         if (!user) throw new Error('尚未登入');
                         // 創建特殊勤務記錄
-                        await addDoc(collection(db, 'specialDuties'), {
+await addDoc(window.__branchHelpers.branchCollection('specialDuties'), {
                             userId: user.uid,
                             userName: state.currentUserData?.name || '',
                             dutyName: dutyName,
@@ -2600,7 +2639,7 @@
                     const endOfDay = new Date(selectedDate);
                     endOfDay.setHours(23, 59, 59, 999);
                     
-                    const recordsRef = collection(db, "clockInRecords");
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     // Firestore 端日期範圍查詢以避免時區邊界誤差（保留前端過濾作為保險）
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
@@ -2865,7 +2904,7 @@
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex, 1)) : start;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)) : end;
                     const q = query(
-                        collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                         where('userId', '==', state.currentUser.uid),
                         where('timestamp', '>=', startTS),
                         where('timestamp', '<=', endTS)
@@ -2877,7 +2916,7 @@
                     // 請假資料（覆蓋該月任何一天）
                     let leaves = [];
                     try {
-                        const lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', state.currentUser.uid));
                         const ls = await getDocs(lq);
                         ls.forEach(doc => leaves.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取請假失敗', e); }
@@ -2885,7 +2924,7 @@
                     // 特殊勤務（值班）資料
                     let duties = [];
                     try {
-                        const dq = query(collection(db, 'specialDuties'), where('userId','==', state.currentUser.uid));
+const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', state.currentUser.uid));
                         const ds = await getDocs(dq);
                         ds.forEach(doc => duties.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -2895,7 +2934,7 @@
                     try {
                         const { doc, getDoc } = window.__fs || {};
                         if (doc && getDoc && db) {
-                            const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                             const settingsSnap = await getDoc(settingsRef);
                             fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                         }
@@ -3128,7 +3167,7 @@
 
                         // 該使用者該月的打卡紀錄
                         const q = query(
-                            collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                             where('userId', '==', userId),
                             where('timestamp', '>=', startTS),
                             where('timestamp', '<=', endTS)
@@ -3140,7 +3179,7 @@
                         // 請假資料（覆蓋該月任何一天）
                         let leaves = [];
                         try {
-                            const lq = query(collection(db, 'leaves'), where('userId','==', userId));
+const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', userId));
                             const ls = await getDocs(lq);
                             ls.forEach(docu => leaves.push({ id: docu.id, ...docu.data() }));
                         } catch(e) { console.warn('讀取請假失敗', e); }
@@ -3148,7 +3187,7 @@
                         // 特殊勤務（值班）資料
                         let duties = [];
                         try {
-                            const dq = query(collection(db, 'specialDuties'), where('userId','==', userId));
+const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', userId));
                             const ds = await getDocs(dq);
                             ds.forEach(docu => duties.push({ id: docu.id, ...docu.data() }));
                         } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -3157,7 +3196,7 @@
                         let fridayDutyRoster = {};
                         try {
                             if (doc && getDoc && db) {
-                                const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                                 const settingsSnap = await getDoc(settingsRef);
                                 fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                             }
@@ -3427,7 +3466,7 @@
                     let fridayDutyRoster = {};
                     try {
                         if (doc && getDoc && db) {
-                            const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                             const settingsSnap = await getDoc(settingsRef);
                             fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                         }
@@ -3447,7 +3486,7 @@
                         let allRecords = [];
                         try {
                             const q = query(
-                                collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                                 where('userId', '==', userId),
                                 where('timestamp', '>=', startTS),
                                 where('timestamp', '<=', endTS)
@@ -4094,7 +4133,7 @@
                                 }
                                 // 若無法覆寫或沒有 originalRecordId，則保留舊行為新增一筆（相容舊申請）
                                 if (!replaced) {
-                                    await addDoc(collection(db, 'clockInRecords'), {
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), {
                                         userId: r.userId,
                                         type: r.type,
                                         timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
@@ -4170,7 +4209,7 @@
                     if (!modListEl) return;
                     modListEl.innerHTML = `<div class="p-4 text-center text-gray-500"><div class="flex items-center justify-center"><i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>載入修改紀錄...</div></div>`;
                     try {
-                        const qs = await getDocs(query(collection(db, 'clockInRecords'), orderBy('timestamp','desc'), limit(200)));
+const qs = await getDocs(query(window.__branchHelpers.branchCollection('clockInRecords'), orderBy('timestamp','desc'), limit(200)));
                         const selectedUser = filterUserEl.value || '';
                         const selectedDate = filterDateEl.value || '';
                         const items = [];
@@ -4297,7 +4336,7 @@
                             if (!userId || !dateStr || !timeStr) { showToast('請完整填寫人員與日期時間', true); return; }
                             if (['外出','抵達','離開'].includes(type) && (!reason || !locationName)) { showToast('外出/抵達/離開需填寫事由與地點', true); return; }
                             const tsDate = new Date(`${dateStr}T${timeStr}:00`);
-                            await addDoc(collection(db, 'clockInRecords'), {
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), {
                                 userId,
                                 type,
                                 timestamp: Timestamp?.fromDate ? Timestamp.fromDate(tsDate) : tsDate,
@@ -4436,7 +4475,7 @@
                         const ids = Array.from(userSelect.selectedOptions).map(o => o.value);
                         return ids;
                     };
-                    const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
                     const selectedIds = getSelectedUserIds();
@@ -4475,7 +4514,7 @@
 
                         const leaveDaySetMap = new Map();
                         try {
-                            const leavesRef = collection(db, 'leaves');
+const leavesRef = window.__branchHelpers.branchCollection('leaves');
                             const qLeaves = query(leavesRef, where('status','==','approved'));
                             const leavesSnap = await getDocs(qLeaves);
                             const leaveReasonDaysMap = new Map();
@@ -4504,7 +4543,7 @@
 
                         const specialDutyDaySetMap = new Map();
                         try {
-                            const sdRef = collection(db, 'specialDuties');
+const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                             const startTS2 = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                             const endTS2 = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
                             const q1 = query(sdRef, where('startTime','>=', startTS2), where('startTime','<=', endTS2));
@@ -4825,7 +4864,7 @@
                         const selectedDate = new Date(dateInput.value);
                         const startOfDay = new Date(selectedDate); startOfDay.setHours(0,0,0,0);
                         const endOfDay = new Date(selectedDate); endOfDay.setHours(23,59,59,999);
-                        const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                         const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                         const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                         const sel = userSelect.value || '__ALL__';
@@ -5197,7 +5236,7 @@
                     try {
                         await Promise.all(visibleUsersList.map(async (u) => {
                             const recQ = query(
-                                collection(db, 'clockInRecords'),
+window.__branchHelpers.branchCollection('clockInRecords'),
                                 where('userId', '==', u.id),
                                 orderBy('timestamp', 'desc'),
                                 limit(1)
@@ -5374,8 +5413,8 @@
                         });
                     };
                     try {
-                        // 全域設定：settings/workdays_YYYY-MM
-                        const settingsDocSnap = await getDoc(doc(db, 'settings', `workdays_${ymKey}`));
+                        // 分館設定：branches/{branch}/settings/workdays_YYYY-MM
+                        const settingsDocSnap = await getDoc(window.__branchHelpers.branchDoc('settings', `workdays_${ymKey}`));
                         if (settingsDocSnap.exists()) {
                             const sd = settingsDocSnap.data();
                             if (sd && sd.days) {
@@ -5415,7 +5454,7 @@
                     // 特殊勤務（活動/支援等）
                     let duties = [];
                     try {
-                        const dq = query(collection(db, 'specialDuties'), where('userId','==', state.currentUser.uid));
+const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where('userId','==', state.currentUser.uid));
                         const ds = await getDocs(dq);
                         ds.forEach(doc => duties.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取特殊勤務失敗', e); }
@@ -5423,14 +5462,14 @@
                     let fridayDutyRoster = {};
                     try {
                         const { doc, getDoc } = window.__fs || {};
-                        const settingsRef = doc(db, 'settings', 'general');
+                        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         const settingsSnap = await getDoc(settingsRef);
                         fridayDutyRoster = settingsSnap.exists() ? (settingsSnap.data().fridayDutyRoster || {}) : {};
                     } catch (e) { console.warn('讀取值班名單失敗', e); }
                     // 請假資料（覆蓋該月任何一天）
                     let leaves = [];
                     try {
-                        const lq = query(collection(db, 'leaves'), where('userId','==', state.currentUser.uid));
+const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userId','==', state.currentUser.uid));
                         const ls = await getDocs(lq);
                         ls.forEach(doc => leaves.push({ id: doc.id, ...doc.data() }));
                     } catch(e) { console.warn('讀取請假失敗', e); }
@@ -5548,7 +5587,7 @@
                 startOfDay.setHours(0, 0, 0, 0);
                 const endOfDay = new Date(selectedDate);
                 endOfDay.setHours(23, 59, 59, 999);
-                const recordsRef = collection(db, 'clockInRecords');
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 let q;
                 const { Timestamp } = window.__fs || {};
                 const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
@@ -5955,7 +5994,7 @@
                     renderHeader(daysInMonth);
 
                     const selectedUserId = userSelect.value;
-                    const recordsRef = collection(db, "clockInRecords");
+const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const { Timestamp } = window.__fs || {};
                     const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                     const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
@@ -6004,14 +6043,14 @@
 
                         // 讀取請假（僅計入已核准）
                         const leaveDaySetMap = new Map(); // userId -> Set(dayNumbers)
-                        try {
-                            const leavesRef = collection(db, 'leaves');
-                            let qLeaves;
-                            if (selectedUserId === 'all') {
-                                qLeaves = query(leavesRef, where('status','==','approved'));
-                            } else {
-                                qLeaves = query(leavesRef, where('status','==','approved'), where('userId','==', selectedUserId));
-                            }
+                    try {
+                        const leavesRef = window.__branchHelpers.branchCollection('leaves');
+                        let qLeaves;
+                        if (selectedUserId === 'all') {
+                            qLeaves = query(leavesRef, where('status','==','approved'));
+                        } else {
+                            qLeaves = query(leavesRef, where('status','==','approved'), where('userId','==', selectedUserId));
+                        }
                             const leavesSnap = await getDocs(qLeaves);
                             leavesSnap.forEach(doc => {
                                 const lv = doc.data();
@@ -6031,7 +6070,7 @@
                         // 讀取特殊勤務（跨月以 startTime 或 endTime 落在本月即計入）
                         const specialDutyDaySetMap = new Map(); // userId -> Set(dayNumbers)
                         try {
-                            const sdRef = collection(db, 'specialDuties');
+const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                             const startTS2 = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
                             const endTS2 = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
                             let q1, q2;
@@ -6353,7 +6392,7 @@
                     const date = dateFilter.value;
                     
                     // 構建查詢
-                    let leavesQuery = collection(db, 'leaves');
+let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                     
                     // 如果選擇了特定狀態
                     if (status !== 'all') {
@@ -7100,7 +7139,7 @@
                 lucide.createIcons();
                 
                 // 從 Firebase 讀取設定
-                const settingsRef = doc(db, "settings", "general");
+const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                 getDoc(settingsRef).then((docSnap) => {
                     if (docSnap.exists()) {
                         const settings = docSnap.data();
@@ -7295,7 +7334,7 @@
                             .map(cb => cb.dataset.userId);
                         
                         // 儲存到 Firebase
-                        await setDoc(doc(db, "settings", "general"), {
+await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                             showEmployeeStatus,
                             
                             visibleUsers,
@@ -7784,7 +7823,7 @@
                 // 週五值班名單載入（全域設定 settings/general.fridayDutyRoster）
                 async function loadFridayDuty() {
                     try {
-                        const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         const snap = await getDoc(settingsRef);
                         const roster = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
 
@@ -7838,7 +7877,7 @@
                     saveFridayBtn.addEventListener('click', async () => {
                         try {
                             showLoading(true);
-                            const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                             const snap = await getDoc(settingsRef);
                             const current = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
                             const fridays = getFridaysInMonth(targetYear, targetMonth);
@@ -9306,7 +9345,7 @@
                         }
                         
                         try {
-                            await addDoc(collection(db, "clockInRecords"), recordData);
+await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordData);
                         } catch (e) {
                             console.error('新增 clockInRecords 失敗：', e?.code, e?.message || e, { keys: Object.keys(recordData), type: recordData.type, locationIsGeoPoint: recordData.location instanceof GeoPoint, photosLen: recordData.photoUrls.length, descLen: recordData.descriptions.length });
                             throw e;

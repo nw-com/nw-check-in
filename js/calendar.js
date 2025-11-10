@@ -270,7 +270,7 @@ async function loadDailyMarkedSchedule(iso) {
                 const usersMap = await fetchUsersOnce().catch(() => ({}));
                 const myName = auth?.currentUser ? (usersMap[auth.currentUser.uid] || auth.currentUser.displayName || auth.currentUser.email || '') : '';
                 const { doc, getDoc } = fs;
-                const settingsRef = doc(db, 'settings', 'general');
+                const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                 const snap = await getDoc(settingsRef);
                 const roster = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
                 const arr = roster[iso] || [];
@@ -363,7 +363,7 @@ async function applyCalendarStatus(year, month) {
         // 讀取「我」的值班名單（本月週五）作為可標示的天
         let dutySet = new Set();
         try {
-            const generalRef = doc(db, 'settings', 'general');
+            const generalRef = window.__branchHelpers.branchDoc('settings', 'general');
             const setSnap = await getDoc(generalRef);
             const roster = setSnap.exists() ? (setSnap.data().fridayDutyRoster || {}) : {};
             const myUid = user.uid || '';
@@ -382,7 +382,7 @@ async function applyCalendarStatus(year, month) {
         const startTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, month, 1)) : new Date(year, month, 1);
         const endTS = Timestamp?.fromDate ? Timestamp.fromDate(new Date(year, month + 1, 0, 23, 59, 59, 999)) : new Date(year, month + 1, 0, 23, 59, 59, 999);
         const q = query(
-            collection(db, 'clockInRecords'),
+            window.__branchHelpers.branchCollection('clockInRecords'),
             where('userId', '==', user.uid),
             where('timestamp', '>=', startTS),
             where('timestamp', '<=', endTS)
@@ -403,7 +403,7 @@ async function applyCalendarStatus(year, month) {
         // 讀取本使用者的請假單（核准或審核中），用於月曆橘底標示
         let leaveRanges = [];
         try {
-            const leavesRef = collection(db, 'leaves');
+            const leavesRef = window.__branchHelpers.branchCollection('leaves');
             // 僅過濾使用者與狀態，其餘於客端判斷與本月是否相交
             const lq = query(
                 leavesRef,
@@ -636,7 +636,7 @@ function initRealtimeSettingsListener() {
         if (!fs || !db || !fs.onSnapshot || !fs.doc) return;
         if (window.__unsubSettings) return; // 已初始化
         const { doc } = fs;
-        const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
         window.__unsubSettings = fs.onSnapshot(settingsRef, (snap) => {
             try {
                 const data = snap.exists() ? snap.data() : {};
@@ -1278,7 +1278,7 @@ async function computeDutyNotifications() {
         const fs = window.__fs; const db = window.__db;
         if (!fs || !db) return [];
         const { doc, getDoc } = fs;
-        const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
         const snap = await getDoc(settingsRef);
         const roster = snap.exists() ? (snap.data().fridayDutyRoster || {}) : {};
         const usersMap = await fetchUsersOnce().catch(() => ({}));
