@@ -8,9 +8,9 @@ async function resetAllUserPoints() {
         showLoading(true);
         
         const db = window.__db;
-        const { collection, getDocs, writeBatch, doc } = window.__fs;
+        const { collection, getDocs, writeBatch, doc, query, where } = window.__fs;
         // 獲取所有用戶
-        const usersSnapshot = await getDocs(collection(db, "users"));
+        const usersSnapshot = await getDocs(query(collection(db, "users"), where('companies', 'array-contains', window.__branch)));
         const batch = writeBatch(db);
         
         // 批量更新所有用戶的點數為0
@@ -62,9 +62,9 @@ function setupMonthlyPointsReset() {
                 console.log("執行每月自動重置點數");
                 
                 const db = window.__db;
-                const { collection, getDocs, writeBatch, doc, serverTimestamp, addDoc } = window.__fs;
+                const { collection, getDocs, writeBatch, doc, serverTimestamp, addDoc, query, where } = window.__fs;
                 // 獲取所有用戶
-                const usersSnapshot = await getDocs(collection(db, "users"));
+                const usersSnapshot = await getDocs(query(collection(db, "users"), where('companies', 'array-contains', window.__branch)));
                 const batch = writeBatch(db);
                 
                 // 批量更新所有用戶的點數為0

@@ -751,7 +751,7 @@ const clockInRef = window.__branchHelpers.branchCollection('clockInRecords');
                         
                         // 取得所有用戶資料以顯示姓名
                         const usersRef = collection(db, 'users');
-                        const usersSnapshot = await getDocs(usersRef);
+                        const usersSnapshot = await getDocs(query(usersRef, where('companies', 'array-contains', window.__branch)));
                         const usersData = {};
                         usersSnapshot.forEach(doc => { usersData[doc.id] = doc.data(); });
                         
@@ -1057,7 +1057,7 @@ const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                         // 將 UID 轉為姓名顯示
                         let nameMap = {};
                         try {
-                            const snap = await getDocs(collection(db, 'users'));
+                            const snap = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                             snap.forEach(d => {
                                 const data = d.data();
                                 nameMap[d.id] = data?.displayName || data?.name || data?.email || d.id;
@@ -1133,7 +1133,7 @@ window.__branchHelpers.branchCollection('clockInRecords'),
             })();
                 
                 const usersRef = collection(db, "users");
-                const unsubscribe = onSnapshot(query(usersRef), (querySnapshot) => {
+                const unsubscribe = onSnapshot(query(usersRef, where('companies', 'array-contains', window.__branch)), (querySnapshot) => {
                     const countWorkEl = document.getElementById('count-work');
                     const countOutboundEl = document.getElementById('count-outbound');
                     const countOffEl = document.getElementById('count-off');
@@ -1279,7 +1279,7 @@ const qLatest = query(window.__branchHelpers.branchCollection('clockInRecords'),
                 lucide.createIcons();
                 
                 const usersRef = collection(db, 'users');
-                const unsub = onSnapshot(query(usersRef), (querySnapshot) => {
+                const unsub = onSnapshot(query(usersRef, where('companies', 'array-contains', window.__branch)), (querySnapshot) => {
                     const listEl = document.getElementById('all-users-modal-list');
                     if (!listEl) return;
                     listEl.innerHTML = '';
@@ -3435,7 +3435,7 @@ const dq = query(window.__branchHelpers.branchCollection('specialDuties'), where
                     // 載入所有使用者（優先 Firestore，回退快取）
                     let users = [];
                     try {
-                        const us = await getDocs(collection(db, 'users'));
+                        const us = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                         us.forEach(d => users.push({ id: d.id, ...d.data() }));
                     } catch (e) {
                         console.warn('讀取 users 失敗，改用快取', e);
@@ -4073,7 +4073,7 @@ window.__branchHelpers.branchCollection('clockInRecords'),
 
                 // 載入人員下拉
                 try {
-                    const us = await getDocs(collection(db, 'users'));
+                    const us = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                     us.forEach(d => {
                         const opt = document.createElement('option');
                         opt.value = d.id; opt.textContent = d.data().name || d.id;
@@ -4100,7 +4100,7 @@ window.__branchHelpers.branchCollection('clockInRecords'),
                         // 載入使用者名稱映射
                         const userMap = {};
                         try {
-                            const us = await getDocs(collection(db, 'users'));
+                            const us = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                             us.forEach(d => userMap[d.id] = d.data().name || d.id);
                         } catch(e) {}
                         listEl.innerHTML = '';
@@ -4248,7 +4248,7 @@ const qs = await getDocs(query(window.__branchHelpers.branchCollection('clockInR
                         // 載入使用者名稱映射
                         const userMap = {};
                         try {
-                            const us = await getDocs(collection(db, 'users'));
+                            const us = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                             us.forEach(d => userMap[d.id] = d.data().name || d.id);
                         } catch(e) {}
                         modListEl.innerHTML = '';
@@ -4641,7 +4641,7 @@ const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                     }
                 };
 
-                getDocs(usersRef).then((qs) => {
+                getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((qs) => {
                     const users = [];
                     qs.forEach(doc => { const data = doc.data() || {}; users.push({ id: doc.id, name: data.name || data.displayName || data.account || data.email || doc.id }); });
                     usersArr = users;
@@ -4835,7 +4835,7 @@ const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                     (async () => {
                         let loaded = false;
                         try {
-                            const qs = await (getDocs ? getDocs(usersRef) : Promise.resolve(null));
+                            const qs = await (getDocs ? getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))) : Promise.resolve(null));
                             if (qs) {
                                 const users = [];
                                 qs.forEach(doc => {
@@ -5060,7 +5060,7 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 try { lucide.createIcons(); } catch(e) {}
 
                 const db = window.__db;
-                const { collection, getDocs } = window.__fs || {};
+                const { collection, getDocs, query, where } = window.__fs || {};
                 if (!db || !collection || !getDocs) {
                     container.innerHTML = '<div class="p-4 text-red-600">系統未初始化，請稍後再試。</div>';
                     return;
@@ -5070,7 +5070,7 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 const tbody = container.querySelector('#hr-monthly-list');
                 const users = [];
 
-                getDocs(usersRef).then((qs) => {
+                getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((qs) => {
                     qs.forEach(doc => {
                         const data = doc.data() || {};
                         const name = data.name || data.displayName || data.account || data.email || doc.id;
@@ -5228,7 +5228,7 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 const allowedUserIds = await loadJuniorManagerAllowedUsers(state.currentUserData.id);
                 const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
                 const usersRef = collection(db, "users");
-                const q = query(usersRef, orderBy("name"));
+                const q = query(usersRef, where('companies', 'array-contains', window.__branch), orderBy("name"));
                 const unsubscribe = onSnapshot(q, async (querySnapshot) => {
                     const listEl = document.getElementById('group-user-list');
                     if (!listEl) return;
@@ -5349,7 +5349,7 @@ window.__branchHelpers.branchCollection('clockInRecords'),
                 loadJuniorManagerAllowedUsers(state.currentUserData.id).then(ids => {
                     if (!ids || ids.length === 0) return;
                     const usersRef = collection(db, "users");
-                    getDocs(usersRef).then((qs) => {
+                    getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((qs) => {
                         const users = [];
                         qs.forEach(doc => { const d = { id: doc.id, ...doc.data() }; if (ids.includes(d.id)) users.push(d); });
                         users.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(u => {
@@ -5627,7 +5627,7 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
                 const usersRef = collection(db, 'users');
-                const usersSnapshot = await getDocs(usersRef);
+                const usersSnapshot = await getDocs(query(usersRef, where('companies', 'array-contains', window.__branch)));
                 const usersMap = {};
                 usersSnapshot.forEach(doc => { usersMap[doc.id] = doc.data().name; });
 
@@ -5887,7 +5887,7 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                             }
                         } catch (err) { console.warn('讀取初階主管允許名單失敗', err); }
 
-                        const qs = await getDocs(usersRef);
+                        const qs = await getDocs(query(usersRef, where('companies', 'array-contains', window.__branch)));
                         const arr = [];
                         qs.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
                         arr.sort((a,b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant')).forEach(u => {
@@ -6165,7 +6165,7 @@ const sdRef = window.__branchHelpers.branchCollection('specialDuties');
                     }
                 };
 
-                getDocs(usersRef).then((qs) => {
+                getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((qs) => {
                     const users = [];
                     qs.forEach(doc => { users.push({ id: doc.id, ...doc.data() }); });
                     usersArr = users;
@@ -6943,7 +6943,7 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                 const managerSelect = document.getElementById('manager-user-select');
                 const allowedList = document.getElementById('allowed-users-list');
                 const usersRef = collection(db, 'users');
-                const qs = await getDocs(usersRef);
+                const qs = await getDocs(query(usersRef, where('companies', 'array-contains', window.__branch)));
                 const users = [];
                 qs.forEach(docSnap => users.push({ id: docSnap.id, ...docSnap.data() }));
                 const managers = users.filter(u => u.role === 'junior_manager');
@@ -7205,7 +7205,7 @@ const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                     
                     // 獲取所有使用者
                     const usersRef = collection(db, "users");
-                    getDocs(usersRef).then((querySnapshot) => {
+                    getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((querySnapshot) => {
                         // 清除載入中的提示
                         userDisplayContainer.innerHTML = `
                             <div class="flex items-center justify-between p-2 border-b">
@@ -7285,7 +7285,7 @@ const settingsRef = window.__branchHelpers.branchDoc('settings', 'general');
                 function loadCommunityStatusAllowedUsers(allowedUserIds) {
                     const container = document.getElementById('community-status-settings');
                     const usersRef = collection(db, "users");
-                    getDocs(usersRef).then((querySnapshot) => {
+                    getDocs(query(usersRef, where('companies', 'array-contains', window.__branch))).then((querySnapshot) => {
                         container.innerHTML = `
                             <div class="flex items-center justify-between p-2 border-b">
                                 <label class="text-gray-700 font-medium">帳號名稱</label>
@@ -7775,7 +7775,7 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                             allUsers = []; uidToName = {}; nameToUid = {};
                             return;
                         }
-                        const snap = await getDocs(collection(db, 'users'));
+                        const snap = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                         const usersArr = [];
                         const u2n = {}; const n2u = {};
                         snap.forEach(docu => {
