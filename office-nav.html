@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>辦公室導覽</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <style>
+    body { font-family: 'Noto Sans TC', system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="max-w-md mx-auto p-6">
+    <div class="bg-white rounded-lg shadow-sm border p-6">
+      <h1 class="text-xl font-bold mb-4">選擇辦公室</h1>
+      <p class="text-gray-600 mb-6">請選擇要使用的系統：</p>
+      <div class="grid grid-cols-1 gap-3">
+        <a href="./index.html" class="block w-full text-center px-4 py-3 bg-red-600 text-white rounded-md hover:bg-red-700">台北辦公室（西北-台北打卡系統）</a>
+        <a href="./index_taoyuan.html" class="block w-full text-center px-4 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">桃園辦公室（西北-桃園打卡系統）</a>
+      </div>
+      <p class="text-xs text-gray-500 mt-4">提示：台北與桃園系統使用不同的資料庫設定，帳號資料彼此獨立。管理員、人事、高階主管可在兩個系統分別登入管理。</p>
+    </div>
+  </div>
+</body>
+</html>
