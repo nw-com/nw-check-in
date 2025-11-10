@@ -8615,6 +8615,9 @@
             }
 
             function renderProfileModal() {
+                // 使用全域 Firebase 參考，避免區域作用域造成未定義
+                const authRef = window.__auth || (typeof auth !== 'undefined' ? auth : null);
+                const dbRef = window.__db || (typeof db !== 'undefined' ? db : null);
                 const modalId = `profile-modal-${Date.now()}`;
                 const close = () => document.getElementById(modalId)?.remove();
 
@@ -8680,7 +8683,7 @@
                 logoutBtn.addEventListener('click', async () => {
                     try {
                         showLoading(true);
-                        await signOut(auth);
+                        await signOut(authRef);
                         showToast("已成功登出");
                         window.location.reload();
                     } catch (error) {
@@ -8719,7 +8722,7 @@
                         await uploadBytes(avatarRef, blob, { contentType: 'image/jpeg' });
                         const url = await getDownloadURL(avatarRef);
 
-                        await updateDoc(doc(db, 'users', state.currentUser.uid), { avatarUrl: url });
+                        await updateDoc(doc(dbRef, 'users', state.currentUser.uid), { avatarUrl: url });
                         state.currentUserData.avatarUrl = url;
                         document.getElementById('modal-avatar').src = url;
                         const header = document.getElementById('header-avatar');
@@ -8814,7 +8817,7 @@
 
                 logoutBtn.addEventListener('click', async () => {
                     close();
-                    await signOut(auth);
+                    await signOut(authRef);
                     showToast("您已成功登出");
                 });
 
@@ -8831,7 +8834,7 @@
                         container.innerHTML = '<div class="text-sm text-gray-500">載入中...</div>';
                         const now = new Date();
                         const q = query(
-                            collection(db, 'leaves'),
+                            collection(dbRef, 'leaves'),
                             where('userId', '==', uid)
                         );
                         const snap = await getDocs(q);
