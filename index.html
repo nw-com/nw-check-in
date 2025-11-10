@@ -535,15 +535,20 @@
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
-                            // 具備導覽權限角色：管理員、人事、高階主管；首次登入導向導覽頁
+                            // 依所屬公司決定導向：同屬 TP 與 TY 進導覽頁；單一公司直接進該分館
                             try {
                                 const params = new URLSearchParams(location.search);
                                 const fromNav = params.get('fromNav') === '1';
-                                const role = state.currentUserData?.role;
-                                const canNavigate = ['admin','hr','manager'].includes(role);
-                                if (canNavigate && !fromNav) {
+                                const companies = Array.isArray(state.currentUserData?.companies) ? state.currentUserData.companies : [];
+                                const hasTP = companies.includes('TP');
+                                const hasTY = companies.includes('TY');
+                                if (hasTP && hasTY && !fromNav) {
                                     location.href = 'branch.html';
                                     return;
+                                }
+                                if (!fromNav) {
+                                    if (hasTY && !hasTP) { location.href = 'index.html?branch=TY'; return; }
+                                    if (hasTP && !hasTY) { location.href = 'index.html?branch=TP'; return; }
                                 }
                             } catch (e) {}
                             // 若標記為離職，立即登出並提示
@@ -2174,6 +2179,21 @@ let q = query(window.__branchHelpers.branchCollection('leaves'), where('userId',
                                         <option value="事假">事假</option>
                                         <option value="其他">其他</option>
                                     </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">所屬公司 (可複選)</label>
+                                    <div class="mt-1 flex items-center gap-4">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-tp" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TP') ? 'checked' : ''}>
+                                            <span>台北（TP）</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-ty" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TY') ? 'checked' : ''}>
+                                            <span>桃園（TY）</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500">若同時勾選兩者，登入後先進入導覽頁。</p>
                                 </div>
                                 
                                 <div id="other-reason-container" class="form-group hidden">
@@ -7014,6 +7034,10 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
   '內勤'
 }</span>
                                     </div>
+                                    <div class="flex items-center gap-1 mt-1">
+                                        <span class="text-xs text-gray-500">所屬公司：</span>
+                                        <span class="companies-tags"></span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex space-x-2">
@@ -7025,6 +7049,17 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                         if (badgeSpan) {
                             badgeSpan.className = `text-xs px-2 py-1 rounded-full ${roleBadgeClass(user.role)}`;
                             badgeSpan.textContent = roleLabel(user.role);
+                        }
+                        // 顯示所屬公司標籤
+                        const tagsEl = userElement.querySelector('.companies-tags');
+                        const companies = Array.isArray(user.companies) ? user.companies : [];
+                        if (tagsEl) {
+                            if (companies.length) {
+                                const label = (c) => c === 'TP' ? 'TP｜台北' : (c === 'TY' ? 'TY｜桃園' : c);
+                                tagsEl.innerHTML = companies.map(c => `<span class="text-[11px] px-2 py-[2px] rounded-full bg-gray-100 text-gray-700 border">${label(c)}</span>`).join(' ');
+                            } else {
+                                tagsEl.innerHTML = '<span class="text-xs text-gray-400">未設定</span>';
+                            }
                         }
                         userList.appendChild(userElement);
                     });
@@ -8449,7 +8484,16 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                     const email = document.getElementById('user-email').value;
                     const role = document.getElementById('user-role').value;
                     
-                    const updateData = { name, phone, lineId, role, email };
+                    // 公司複選蒐集與驗證
+                    const companies = [];
+                    const tpEl = document.getElementById('user-company-tp');
+                    const tyEl = document.getElementById('user-company-ty');
+                    if (tpEl?.checked) companies.push('TP');
+                    if (tyEl?.checked) companies.push('TY');
+                    if (companies.length === 0) {
+                        throw new Error('請至少選擇一個所屬公司。');
+                    }
+                    const updateData = { name, phone, lineId, role, email, companies };
 
                     // 編輯模式：同步離職狀態
                     if (isEditing) {

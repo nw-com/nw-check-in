@@ -480,15 +480,20 @@
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
-                            // e??a�P��c??a?? (admin/hr/manager) e??i??e??c?��? branch.html
+                            // companies i??TP a?� TY a??a?�Pa?, a?��a?�Da?? branch.html; a?�Pa?a??a��a?c? index.html?a?c?
                             try {
                                 const params = new URLSearchParams(location.search);
                                 const fromNav = params.get('fromNav') === '1';
-                                const role = state.currentUserData?.role;
-                                const canNavigate = ['admin','hr','manager'].includes(role);
-                                if (canNavigate && !fromNav) {
+                                const companies = Array.isArray(state.currentUserData?.companies) ? state.currentUserData.companies : [];
+                                const hasTP = companies.includes('TP');
+                                const hasTY = companies.includes('TY');
+                                if (hasTP && hasTY && !fromNav) {
                                     location.href = 'branch.html';
                                     return;
+                                }
+                                if (!fromNav) {
+                                    if (hasTY && !hasTP) { location.href = 'index.html?branch=TY'; return; }
+                                    if (hasTP && !hasTY) { location.href = 'index.html?branch=TP'; return; }
                                 }
                             } catch (e) {}
                             if (wasNotInitialized) {
@@ -6193,6 +6198,10 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
   'a?��a??'
 }</span>
                                     </div>
+                                    <div class="flex items-center gap-1 mt-1">
+                                        <span class="text-xs text-gray-500">a??e�La�X?</span>
+                                        <span class="companies-tags"></span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex space-x-2">
@@ -6204,6 +6213,17 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                         if (badgeSpan) {
                             badgeSpan.className = `text-xs px-2 py-1 rounded-full ${roleBadgeClass(user.role)}`;
                             badgeSpan.textContent = roleLabel(user.role);
+                        }
+                        // a??e�La�X?a?��a��
+                        const tagsEl = userElement.querySelector('.companies-tags');
+                        const companies = Array.isArray(user.companies) ? user.companies : [];
+                        if (tagsEl) {
+                            if (companies.length) {
+                                const label = (c) => c === 'TP' ? 'TP | a?��a?��' : (c === 'TY' ? 'TY | ao�a??' : c);
+                                tagsEl.innerHTML = companies.map(c => `<span class="text-[11px] px-2 py-[2px] rounded-full bg-gray-100 text-gray-700 border">${label(c)}</span>`).join(' ');
+                            } else {
+                                tagsEl.innerHTML = '<span class="text-xs text-gray-400">a?��a?�Da??</span>';
+                            }
                         }
                         userList.appendChild(userElement);
                     });
@@ -7273,6 +7293,21 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                                         <option value="admin" ${isEditing && user.role === 'admin' ? 'selected' : ''}>cR!c??a?!</option>
                                     </select>
                                 </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">a??e�La�X? (a?�Pa?��)</label>
+                                    <div class="mt-1 flex items-center gap-4">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-tp" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TP') ? 'checked' : ''}>
+                                            <span>TP | a?��a?��</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="checkbox" id="user-company-ty" class="h-4 w-4" ${isEditing && Array.isArray(user.companies) && user.companies.includes('TY') ? 'checked' : ''}>
+                                            <span>TY | ao�a??</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500">a?�Pa?�Pa??a��, a?��a?�Da??e??a?c? brancha-?e??</p>
+                                </div>
                                 
                                 <p id="user-form-error" class="text-red-500 text-sm text-center"></p>
                                 <div class="flex justify-end space-x-2 pt-2 flex-shrink-0">
@@ -7326,7 +7361,16 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                     const email = document.getElementById('user-email').value;
                     const role = document.getElementById('user-role').value;
                     
-                    const updateData = { name, phone, lineId, role, email };
+                    // companies a?�Pa??e-?a?|
+                    const companies = [];
+                    const tpEl = document.getElementById('user-company-tp');
+                    const tyEl = document.getElementById('user-company-ty');
+                    if (tpEl?.checked) companies.push('TP');
+                    if (tyEl?.checked) companies.push('TY');
+                    if (companies.length === 0) {
+                        throw new Error('a??e�La�X?o?Ma�?a??a?��a-? a?�Pa??');
+                    }
+                    const updateData = { name, phone, lineId, role, email, companies };
 
                     try {
                         let targetUserId = isEditing ? user.id : null;

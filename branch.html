@@ -13,7 +13,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
       <h1 class="text-xl font-bold">選擇分館</h1>
     </div>
-    <p id="role-note" class="text-sm text-gray-600 mb-6">僅管理員、人事、高階主管可進入導覽頁。</p>
+    <p id="role-note" class="text-sm text-gray-600 mb-6">同時屬台北與桃園者可選擇分館；單一公司將自動導向。</p>
 
     <div class="grid grid-cols-1 gap-4" id="branch-grid" style="display:none;">
       <button id="btn-tp" class="w-full border rounded-lg p-4 hover:bg-gray-50 flex items-center justify-between">
@@ -47,7 +47,7 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // 權限檢查：僅 admin/hr/manager 可使用導覽頁
+    // 權限檢查：同時屬台北與桃園者可使用導覽頁；單一公司自動導向
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
         location.href = 'index.html';
@@ -55,13 +55,16 @@
       }
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
-        const role = snap.exists() ? snap.data().role : null;
-        const canNavigate = ['admin','hr','manager'].includes(role);
-        if (!canNavigate) {
-          location.href = 'index.html';
+        const data = snap.exists() ? snap.data() : {};
+        const companies = Array.isArray(data.companies) ? data.companies : [];
+        const hasTP = companies.includes('TP');
+        const hasTY = companies.includes('TY');
+        if (!(hasTP && hasTY)) {
+          const target = hasTY ? 'TY' : 'TP';
+          location.href = `index.html?branch=${target}&fromNav=1`;
           return;
         }
-        document.getElementById('role-note').textContent = `歡迎 ${snap.data().name || user.email}（${role}），請選擇分館。`;
+        document.getElementById('role-note').textContent = `歡迎 ${data.name || user.email}，請選擇分館。`;
         document.getElementById('branch-grid').style.display = 'grid';
       } catch (e) {
         console.error(e);
