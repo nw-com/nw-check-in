@@ -1967,9 +1967,12 @@ function fetchUsersOnce() {
                 resolve(window.__usersCache);
                 return;
             }
-            const { collection, getDocs } = fs;
+            const { collection, getDocs, query, where } = fs;
             const ref = collection(db, 'users');
-            const snap = await getDocs(ref);
+            const q = (typeof query === 'function' && typeof where === 'function' && window.__branch)
+                ? query(ref, where('companies', 'array-contains', window.__branch))
+                : ref;
+            const snap = await getDocs(q);
             const map = {};
             snap.forEach(d => {
                 const data = d.data();

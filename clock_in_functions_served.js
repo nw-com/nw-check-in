@@ -1464,9 +1464,14 @@ async function checkAllUsersOvertimeStatus() {
             return;
         }
         
-        // 獲取所有用戶
-        const { collection, getDocs } = window.__fs;
-        const usersSnapshot = await getDocs(collection(window.__db, 'users'));
+        // 獲取所有用戶（限定當前分館）
+        const { collection, getDocs, query, where } = window.__fs;
+        const usersRef = collection(window.__db, 'users');
+        const usersSnapshot = await getDocs(
+            (typeof query === 'function' && typeof where === 'function' && window.__branch)
+                ? query(usersRef, where('companies', 'array-contains', window.__branch))
+                : usersRef
+        );
         const overtimeUsers = [];
         
         usersSnapshot.forEach(doc => {
@@ -1487,7 +1492,7 @@ async function checkAllUsersOvertimeStatus() {
                 try {
                     const { query, where, orderBy, limit } = window.__fs;
                     const lastQ = query(
-                        collection(window.__db, 'clockInRecords'),
+                        window.__branchHelpers.branchCollection('clockInRecords'),
                         where('userId', '==', ou.userId),
                         where('type', '==', '上班'),
                         orderBy('timestamp', 'desc'),
