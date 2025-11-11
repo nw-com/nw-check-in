@@ -5608,9 +5608,12 @@ const lq = query(window.__branchHelpers.branchCollection('leaves'), where('userI
                 startOfDay.setHours(0, 0, 0, 0);
                 const endOfDay = new Date(selectedDate);
                 endOfDay.setHours(23, 59, 59, 999);
-const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
+                const fs = window.__fs || {};
+                const db = window.__db;
+                const { collection, getDocs, query, where } = fs;
+                const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 let q;
-                const { Timestamp } = window.__fs || {};
+                const { Timestamp } = fs;
                 const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfDay) : startOfDay;
                 const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfDay) : endOfDay;
                 if (selectedUserId === 'all') {
@@ -5736,8 +5739,8 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                                 const ok = confirm('確定要刪除此出勤紀錄？此操作無法復原。');
                                 if (!ok) return;
                                 const { doc, deleteDoc } = window.__fs;
-                                const db = window.__db;
-                                await deleteDoc(doc(db, 'clockInRecords', recordId));
+                                const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
+                                await deleteDoc(doc(recordsRef, recordId));
                                 showToast('刪除成功');
                                 // 重新載入列表
                                 const selectedUserId = document.getElementById('user-select')?.value || 'all';

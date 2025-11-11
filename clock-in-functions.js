@@ -1301,8 +1301,8 @@ async function performAutoClockOut() {
             recordData.locationName = locationName;
         }
         
-        // 保存打卡記錄
-        await addDoc(collection(window.__db, 'clockInRecords'), recordData);
+        // 保存打卡記錄（分館路徑）
+        await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordData);
         
         // 更新用戶狀態為「已下班-未打卡」
         const userUpdateData = {
