@@ -3873,14 +3873,22 @@ window.__branchHelpers.branchCollection('clockInRecords'),
                             if (selectedDate && dateStr !== selectedDate) return;
                             items.push({ id: docSnap.id, ...d, ts });
                         });
-                        if (items.length === 0) { list.innerHTML = `<div class=\"text-sm text-gray-500\">無符合條件的申請。</div>`; return; }
-                        items.sort((a,b) => {
+                        // 取得分館人員名單，僅顯示分館成員的申請
+                        const userMap = {};
+                        try {
+                            const usSnap = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
+                            usSnap.forEach(d => userMap[d.id] = d.data().name || d.id);
+                        } catch(e) {}
+                        const branchUserIds = new Set(Object.keys(userMap));
+                        const filteredItems = items.filter(it => branchUserIds.has(it.userId));
+                        if (filteredItems.length === 0) { list.innerHTML = `<div class=\"text-sm text-gray-500\">無符合條件的申請。</div>`; return; }
+                        filteredItems.sort((a,b) => {
                             const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
                             const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
                             return tb - ta;
                         });
                         list.innerHTML = '';
-                        items.forEach(data => {
+                        filteredItems.forEach(data => {
                             const id = data.id;
                             const row = document.createElement('div');
                             row.className = 'border rounded p-3 flex items-center justify-between';
@@ -5776,8 +5784,8 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     const status = statusFilter.value;
                     const date = dateFilter.value;
                     
-                    // a��?a?oa?�Dec�F
-                    let leavesQuery = collection(window.__db, 'leaves');
+                    // 依分館集合載入 leaves
+                    let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                     
                     // a|?a??e?�Ma??ao?c?1aR?c?�a??
                     if (status !== 'all') {

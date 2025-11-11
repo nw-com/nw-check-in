@@ -4174,14 +4174,17 @@ window.__branchHelpers.branchCollection('clockInRecords'),
                             items.push({ ...req, when });
                         });
                         if (items.length === 0) { listEl.innerHTML = `<p class="text-center text-gray-500 p-4">無符合條件的申請</p>`; return; }
-                        // 載入使用者名稱映射
+                        // 載入使用者名稱映射（僅分館人員）並過濾非分館請求
                         const userMap = {};
                         try {
                             const us = await getDocs(query(collection(db, 'users'), where('companies', 'array-contains', window.__branch)));
                             us.forEach(d => userMap[d.id] = d.data().name || d.id);
                         } catch(e) {}
+                        const branchUserIds = new Set(Object.keys(userMap));
+                        const filteredItems = items.filter(req => branchUserIds.has(req.userId));
+                        if (filteredItems.length === 0) { listEl.innerHTML = `<p class="text-center text-gray-500 p-4">無符合條件的申請</p>`; return; }
                         listEl.innerHTML = '';
-                        items.forEach(req => {
+                        filteredItems.forEach(req => {
                             const userName = userMap[req.userId] || req.userId;
                             const item = document.createElement('div');
                             item.className = 'p-3 border rounded-md bg-white flex items-center justify-between';
@@ -6773,9 +6776,9 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                     }, 200);
                     return;
                 }
-                const { collection, query, orderBy, onSnapshot, getDocs } = fs;
+                const { collection, query, orderBy, onSnapshot, getDocs, where } = fs;
                 const usersRef = collection(db, "users");
-                const q = query(usersRef, orderBy("name"));
+                const q = query(usersRef, where('companies', 'array-contains', window.__branch), orderBy("name"));
 
                 const handleSnapshot = (querySnapshot) => {
                     state.trackingMarkers.forEach(marker => marker.map = null);
