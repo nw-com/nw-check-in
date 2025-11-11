@@ -532,6 +532,10 @@
                 const navOther = document.getElementById('nav-other');
                 const navDashboard = document.querySelector('.tab-btn[data-tab="dashboard"]');
                 const navClockIn = document.querySelector('.tab-btn[data-tab="clock-in"]');
+                // a??a?!a??e�La�X? i?? brancha-? a?��a?? "a??a?!" a-?a?
+                const preferredClockIn = state?.currentUserData?.clockInCompany;
+                const branch = window.__branch;
+                const shouldHideClockIn = (preferredClockIn === 'TP' && branch === 'TY') || (preferredClockIn === 'TY' && branch === 'TP');
 
                 // a�X?e|?e!��c?oa??e??i??a?��a??e��?e?2i??admin, manager(e??e??a�M?cR!), junior_manager(a??e??a�M?cR!), hr, user, fieldi??
                 const role = state.currentUserData.role;
@@ -540,8 +544,11 @@
                 if (role === 'field') {
                     // a??a??i??a??e!��c?oa�?a??a?!a�?e??a�?a??a??a�?a??e??
                     [navDashboard, navFeatures, navCalendar, navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
-                    if (navClockIn) navClockIn.classList.remove('hide');
                     if (navOther) navOther.classList.remove('hide');
+                    if (navClockIn) {
+                        if (shouldHideClockIn) navClockIn.classList.add('hide');
+                        else navClockIn.classList.remove('hide');
+                    }
                 } else if (role === 'admin') {
                     // 管理員：顯示追蹤、設定；不顯示群組與人事
                     navTracking && navTracking.classList.remove('hide');
@@ -564,6 +571,12 @@
                     // a?��a??/a�M�e??a??c?�Le�?i??a�M?e!��c?oe??e1?a�?e�L-aR?a�?HRa�?c??c�g?i??a�M?e!��c?oa�?a??a??a�?a??e??
                     if (navOther) navOther.classList.add('hide');
                 }
+
+                // a??a?!a??e�La�X? i?? brancha-? a?��a?? "a??a?!" a-?a?（a|?e|?a??）
+                if (navClockIn) {
+                    if (shouldHideClockIn) navClockIn.classList.add('hide');
+                    else navClockIn.classList.remove('hide');
+                }
                 
                 loginPage.classList.add('hide');
                 appContainer.classList.remove('hide');
@@ -572,8 +585,14 @@
                 if (role === 'field') {
                     // a??a??e??e�L-e�2a?�Da�?a??a?!a�?e??
                     const clockBtn = document.querySelector('.tab-btn[data-tab="clock-in"]');
-                    if (clockBtn) clockBtn.classList.add('active');
-                    showPage('clock-in');
+                    if (!shouldHideClockIn && clockBtn && !clockBtn.classList.contains('hide')) {
+                        clockBtn.classList.add('active');
+                        showPage('clock-in');
+                    } else {
+                        const otherBtn = document.querySelector('.tab-btn[data-tab="other"]');
+                        if (otherBtn) otherBtn.classList.add('active');
+                        showPage('other');
+                    }
                 } else {
                     document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
                     showPage('dashboard');
@@ -6276,6 +6295,10 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                                         <span class="text-xs text-gray-500">a??e�La�X?</span>
                                         <span class="companies-tags"></span>
                                     </div>
+                                    <div class="flex items-center gap-1 mt-1">
+                                        <span class="text-xs text-gray-500">a??a?!a??e�La�X?</span>
+                                        <span class="clockin-tag text-[11px] px-2 py-[2px] rounded-full bg-gray-100 text-gray-700 border"></span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex space-x-2">
@@ -6298,6 +6321,11 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                             } else {
                                 tagsEl.innerHTML = '<span class="text-xs text-gray-400">a?��a?�Da??</span>';
                             }
+                        }
+                        const clockEl = userElement.querySelector('.clockin-tag');
+                        if (clockEl) {
+                            const ci = user.clockInCompany;
+                            clockEl.textContent = ci === 'TP' ? 'TP | a?��a?��' : (ci === 'TY' ? 'TY | ao�a??' : 'a?��a?�Da??');
                         }
                         userList.appendChild(userElement);
                     });
@@ -7406,6 +7434,21 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                                     </div>
                                     <p class="text-xs text-gray-500">a?�Pa?�Pa??a��, a?��a?�Da??e??a?c? brancha-?e??</p>
                                 </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">a??a?!a??e�La�X? (a?�Pa?��)</label>
+                                    <div class="mt-1 flex items-center gap-6">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="radio" name="clock-in-company" id="user-clockin-tp" value="TP" class="h-4 w-4" ${isEditing && user.clockInCompany === 'TP' ? 'checked' : ''}>
+                                            <span>TP | a?��a?��</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="radio" name="clock-in-company" id="user-clockin-ty" value="TY" class="h-4 w-4" ${isEditing && user.clockInCompany === 'TY' ? 'checked' : ''}>
+                                            <span>TY | ao�a??</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500">a?�Xa?�� TP i?? TY a?�Da??a?? "a??a?!" a-?a?i??, TY i?? TP a?�Da??a??.</p>
+                                </div>
                                 
                                 <p id="user-form-error" class="text-red-500 text-sm text-center"></p>
                                 <div class="flex justify-end space-x-2 pt-2 flex-shrink-0">
@@ -7469,7 +7512,10 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                     if (companies.length === 0) {
                         throw new Error('a??e�La�X?o?Ma�?a??a?��a-? a?�Pa??');
                     }
-                    const updateData = { name, phone, lineId, role, email, companies };
+                    const clockInCompanyEl = document.querySelector('input[name="clock-in-company"]:checked');
+                    if (!clockInCompanyEl) { throw new Error('a?�Xa??a??a??a??e�La�X?a?�� (TP i?? TY)'); }
+                    const clockInCompany = clockInCompanyEl.value;
+                    const updateData = { name, phone, lineId, role, email, companies, clockInCompany };
 
                     try {
                         let targetUserId = isEditing ? user.id : null;

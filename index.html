@@ -599,6 +599,10 @@
                 const navOther = document.getElementById('nav-other');
                 const navDashboard = document.querySelector('.tab-btn[data-tab="dashboard"]');
                 const navClockIn = document.querySelector('.tab-btn[data-tab="clock-in"]');
+                // 依「打卡公司」偏好隱藏分頁：TP 偏好在 TY 分頁隱藏；TY 偏好在 TP 分頁隱藏
+                const preferredClockIn = state?.currentUserData?.clockInCompany;
+                const branch = window.__branch;
+                const shouldHideClockIn = (preferredClockIn === 'TP' && branch === 'TY') || (preferredClockIn === 'TY' && branch === 'TP');
 
                 // 導覽顯示權限（擴充角色：admin, manager(高階主管), junior_manager(初階主管), hr, user, field）
                 const role = state.currentUserData.role;
@@ -607,8 +611,11 @@
                 if (role === 'field') {
                     // 外勤：僅顯示「打卡」與「其他」分頁
                     [navDashboard, navFeatures, navCalendar, navTracking, navSettings, navHr, navGroup].forEach(el => el && el.classList.add('hide'));
-                    if (navClockIn) navClockIn.classList.remove('hide');
                     if (navOther) navOther.classList.remove('hide');
+                    if (navClockIn) {
+                        if (shouldHideClockIn) navClockIn.classList.add('hide');
+                        else navClockIn.classList.remove('hide');
+                    }
                 } else if (role === 'admin') {
                     // 管理員：顯示追蹤、設定、人事
                     navTracking.classList.remove('hide');
@@ -633,6 +640,12 @@
                     // 內勤/一般使用者：不顯示追蹤、設定、HR、群組；不顯示「其他」分頁
                     if (navOther) navOther.classList.add('hide');
                 }
+
+                // 所有角色均套用「打卡公司」分頁隱藏規則
+                if (navClockIn) {
+                    if (shouldHideClockIn) navClockIn.classList.add('hide');
+                    else navClockIn.classList.remove('hide');
+                }
                 
                 loginPage.classList.add('hide');
                 appContainer.classList.remove('hide');
@@ -641,8 +654,15 @@
                 if (role === 'field') {
                     // 外勤預設進入「打卡」頁
                     const clockBtn = document.querySelector('.tab-btn[data-tab="clock-in"]');
-                    if (clockBtn) clockBtn.classList.add('active');
-                    showPage('clock-in');
+                    if (!shouldHideClockIn && clockBtn && !clockBtn.classList.contains('hide')) {
+                        clockBtn.classList.add('active');
+                        showPage('clock-in');
+                    } else {
+                        // 若打卡分頁被隱藏，預設進入「其他」頁
+                        const otherBtn = document.querySelector('.tab-btn[data-tab="other"]');
+                        if (otherBtn) otherBtn.classList.add('active');
+                        showPage('other');
+                    }
                 } else {
                     document.querySelector('.tab-btn[data-tab="dashboard"]').classList.add('active');
                     showPage('dashboard');
@@ -7114,6 +7134,10 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                                         <span class="text-xs text-gray-500">所屬公司：</span>
                                         <span class="companies-tags"></span>
                                     </div>
+                                    <div class="flex items-center gap-1 mt-1">
+                                        <span class="text-xs text-gray-500">打卡公司：</span>
+                                        <span class="clockin-tag"></span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex space-x-2">
@@ -7136,6 +7160,13 @@ let leavesQuery = window.__branchHelpers.branchCollection('leaves');
                             } else {
                                 tagsEl.innerHTML = '<span class="text-xs text-gray-400">未設定</span>';
                             }
+                        }
+                        // 顯示打卡公司單選標籤
+                        const clockinEl = userElement.querySelector('.clockin-tag');
+                        if (clockinEl) {
+                            const v = user.clockInCompany;
+                            const label = v === 'TP' ? 'TP｜台北' : (v === 'TY' ? 'TY｜桃園' : '未設定');
+                            clockinEl.innerHTML = `<span class="text-[11px] px-2 py-[2px] rounded-full bg-gray-100 text-gray-700 border">${label}</span>`;
                         }
                         userList.appendChild(userElement);
                     });
@@ -8428,6 +8459,21 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                                     <p class="text-xs text-gray-500">可複選。兩者皆勾選時，登入後導向導覽頁。</p>
                                 </div>
 
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">打卡公司（單選）</label>
+                                    <div class="mt-1 flex items-center gap-6">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="radio" name="clock-in-company" id="user-clockin-tp" value="TP" class="h-4 w-4" ${isEditing && user.clockInCompany === 'TP' ? 'checked' : ''}>
+                                            <span>TP ｜ 台北</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input type="radio" name="clock-in-company" id="user-clockin-ty" value="TY" class="h-4 w-4" ${isEditing && user.clockInCompany === 'TY' ? 'checked' : ''}>
+                                            <span>TY ｜ 桃園</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500">選擇台北則桃園主頁隱藏「打卡」分頁；選擇桃園則台北主頁隱藏。</p>
+                                </div>
+
                                 ${isEditing ? `
                                 <div class="flex items-center gap-2">
                                     <input type="checkbox" id="user-resigned" class="h-4 w-4" ${user.resigned ? 'checked' : ''} />
@@ -8631,7 +8677,12 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
                     if (companies.length === 0) {
                         throw new Error('請至少選擇一個所屬公司。');
                     }
-                    const updateData = { name, phone, lineId, role, email, companies };
+                    const clockInCompanyEl = document.querySelector('input[name="clock-in-company"]:checked');
+                    if (!clockInCompanyEl) {
+                        throw new Error('請選擇打卡公司（台北或桃園）。');
+                    }
+                    const clockInCompany = clockInCompanyEl.value; // 'TP' or 'TY'
+                    const updateData = { name, phone, lineId, role, email, companies, clockInCompany };
 
                     // 編輯模式：同步離職狀態
                     if (isEditing) {
