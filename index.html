@@ -2341,6 +2341,7 @@ await addDoc(window.__branchHelpers.branchCollection('leaves'), {
                         });
                         
                         showToast('請假申請已提交，等待審核');
+                        try { if (typeof window.speak === 'function') window.speak('您已申請請假'); } catch (_) {}
                         updateStatusDisplay();
                         document.body.removeChild(modal);
                     } catch (error) {
@@ -9174,6 +9175,7 @@ await setDoc(window.__branchHelpers.branchDoc('settings', 'general'), {
             }
 
             function openCameraModal(type, location) {
+                try { if (typeof window.maybeSpeakOutsideRange === 'function') { window.maybeSpeakOutsideRange(location || state.currentLocation); } } catch (_) {}
                  const modalId = `camera-modal-${Date.now()}`;
                 let videoStream;
                 const capturedPhotos = []; // { blob, description }
@@ -9522,6 +9524,7 @@ await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordDa
                         }
                         
                         showToast(`${type}打卡成功！`);
+                        try { if (typeof window.speak === 'function') window.speak('您已打卡成功'); } catch (_) {}
                         close();
                         // 安全導頁：若 showPage 不可用則直接重繪打卡頁
                         try {
@@ -9537,6 +9540,7 @@ await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordDa
                     } catch (error) {
                         console.error("Clock in error:", error);
                         showToast("打卡失敗，請稍後再試", true);
+                        try { if (typeof window.speak === 'function') window.speak('您打卡失敗'); } catch (_) {}
                     } finally {
                         showLoading(false);
                     }
@@ -9652,6 +9656,56 @@ await addDoc(window.__branchHelpers.branchCollection('clockInRecords'), recordDa
             }
             // 使全域可用，以供其他腳本呼叫
             window.showToast = showToast;
+
+            // 語音提示：簡易 TTS（中文優先）
+            function speak(text) {
+                try {
+                    if (!('speechSynthesis' in window)) return;
+                    const utter = new SpeechSynthesisUtterance(String(text));
+                    utter.lang = 'zh-TW';
+                    utter.rate = 1;
+                    utter.pitch = 1;
+                    const voices = speechSynthesis.getVoices();
+                    const zhVoice = voices.find(v => (v.lang || '').toLowerCase().startsWith('zh') || (v.name || '').includes('Chinese') || (v.lang || '').toLowerCase() === 'zh-tw');
+                    if (zhVoice) utter.voice = zhVoice;
+                    try { speechSynthesis.cancel(); } catch (e) {}
+                    speechSynthesis.speak(utter);
+                } catch (e) { console.warn('語音提示失敗', e); }
+            }
+            window.speak = speak;
+
+            // 打卡範圍語音提示：依據分館位置設定判斷是否在任何有效半徑內
+            async function maybeSpeakOutsideRange(loc) {
+                try {
+                    const getDoc = window.__fs?.getDoc;
+                    const helpers = window.__branchHelpers;
+                    if (!getDoc || !helpers?.branchDoc) return;
+                    const docSnap = await getDoc(helpers.branchDoc('settings', 'location'));
+                    if (!docSnap.exists()) return;
+                    const s = docSnap.data() || {};
+                    if (s.markAbnormalLocation === false) return; // 顯示異常位置功能被關閉時略過
+                    const lat = (loc && typeof loc.lat === 'number') ? loc.lat : null;
+                    const lng = (loc && typeof loc.lng === 'number') ? loc.lng : null;
+                    if (lat == null || lng == null) return;
+                    const dist = (aLat, aLng, bLat, bLng) => {
+                        const toRad = x => x * Math.PI / 180;
+                        const R = 6371000;
+                        const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+                        const aa = Math.sin(dLat/2)**2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng/2)**2;
+                        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
+                        return R * c;
+                    };
+                    const companyOk = (typeof s.companyLat==='number' && typeof s.companyLng==='number' && typeof s.companyRadius==='number')
+                        ? dist(lat, lng, s.companyLat, s.companyLng) <= s.companyRadius
+                        : false;
+                    const others = Array.isArray(s.otherLocations) ? s.otherLocations : [];
+                    const otherOk = others.some(o => typeof o?.lat==='number' && typeof o?.lng==='number' && typeof o?.radius==='number'
+                        && dist(lat, lng, o.lat, o.lng) <= o.radius);
+                    const within = companyOk || otherOk;
+                    if (!within) { speak('您不在打卡範圍，請重新定位'); }
+                } catch (e) { /* 靜默失敗 */ }
+            }
+            window.maybeSpeakOutsideRange = maybeSpeakOutsideRange;
             function openVoiceCallModal(targetUserId, stream) {
                 const backdrop = document.createElement('div');
                 backdrop.id = 'voice-call-backdrop';
