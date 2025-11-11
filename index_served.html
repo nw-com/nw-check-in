@@ -2511,13 +2511,72 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                     // a??a??a??c?�Le�?a?�Dec�Fi??e??a??e??a??c���Fa??e?�a��?i??a?�Da??a?�La??c?��e??a??
                     const q = query(recordsRef, where("userId", "==", state.currentUser.uid));
 
-                    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
                         if (!recordsListEl) return;
                         
                         if (querySnapshot.empty) {
-                            recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">a??a?�Dc?!a??a?!c���e??</p>`;
-                            return;
+                            // Fallback：若分館集合無資料，嘗試從根集合讀取（相容舊資料/寫入路徑）
+                            try {
+                                const rootRef = collection(db, 'clockInRecords');
+                                const rq = query(
+                                    rootRef,
+                                    where('userId', '==', state.currentUser.uid),
+                                    where('timestamp', '>=', startOfDay),
+                                    where('timestamp', '<=', endOfDay)
+                                );
+                                const rsnap = await getDocs(rq);
+                                if (rsnap.empty) {
+                                    recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                                    return;
+                                }
+                                const fallbackRecords = [];
+                                rsnap.forEach(doc => fallbackRecords.push({ id: doc.id, ...doc.data() }));
+                                const filtered = fallbackRecords.filter(r => {
+                                    const ts = r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null);
+                                    if (!ts) return false;
+                                    return ts >= startOfDay && ts <= endOfDay;
+                                }).sort((a, b) => {
+                                    const timeA = a.timestamp?.toDate?.() || (a.timestamp ? new Date(a.timestamp) : new Date(0));
+                                    const timeB = b.timestamp?.toDate?.() || (b.timestamp ? new Date(b.timestamp) : new Date(0));
+                                    return timeB - timeA;
+                                });
+                                recordsListEl.innerHTML = '';
+                                filtered.forEach(record => {
+                                    const card = document.createElement('div');
+                                    card.className = 'bg-white p-3 rounded-lg shadow-sm border mb-3';
+                                    const statusText = getStatusDisplayText(record.type || '未知', record.locationName || null, record.dutyType || null);
+                                    const statusColor = getStatusColor(statusText);
+                                    card.innerHTML = `
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <p class="font-bold text-lg ${statusColor}">${statusText}</p>
+                                                <p class="text-sm text-gray-600">${formatDate(record.timestamp)}</p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button class="map-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-lat="${record.location?.latitude || 0}" data-lng="${record.location?.longitude || 0}">
+                                                    <i data-lucide="map-pin"></i> 地圖
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                    recordsListEl.appendChild(card);
+                                });
+                                try { lucide.createIcons(); } catch(e) {}
+                                document.querySelectorAll('.map-btn').forEach(btn => {
+                                    btn.addEventListener('click', (e) => {
+                                        const lat = parseFloat(e.currentTarget.dataset.lat);
+                                        const lng = parseFloat(e.currentTarget.dataset.lng);
+                                        if(lat && lng) openMapModal(lat, lng);
+                                        else showToast("c?!a??c?Re3?e�L?a?��e!��c?o", true);
+                                    });
+                                });
+                                return;
+                            } catch (err) {
+                                console.error('fallback root clockInRecords 讀取失敗', err);
+                                recordsListEl.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                                return;
+                            }
                         }
                         
                         const records = [];
@@ -4783,10 +4842,25 @@ const recordsRef = window.__branchHelpers.branchCollection('clockInRecords');
                 }
 
                 container.innerHTML = `<div class="text-center p-4 text-gray-500">a-�Ga?�LeR�a??c���e??...</div>`;
-                const querySnapshot = await getDocs(q);
+                let querySnapshot = await getDocs(q);
                 if (querySnapshot.empty) {
-                    container.innerHTML = `<p class="text-center text-gray-500 p-4">c?!a??a?!c���e??</p>`;
-                    return;
+                    // Fallback：若分館集合無資料，嘗試從根集合讀取（相容舊資料/寫入路徑）
+                    try {
+                        const rootRef = collection(db, 'clockInRecords');
+                        const rq = selectedUserId === 'all'
+                            ? query(rootRef, where('timestamp', '>=', startTS), where('timestamp', '<=', endTS))
+                            : query(rootRef, where('userId', '==', selectedUserId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
+                        const rsnap = await getDocs(rq);
+                        if (rsnap.empty) {
+                            container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                            return;
+                        }
+                        querySnapshot = rsnap;
+                    } catch (err) {
+                        console.error('fallback root clockInRecords 讀取失敗', err);
+                        container.innerHTML = `<p class="text-center text-gray-500 p-4">無打卡紀錄</p>`;
+                        return;
+                    }
                 }
                 const records = [];
                 querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
