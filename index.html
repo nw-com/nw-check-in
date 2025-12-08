@@ -490,7 +490,32 @@
                 try {
                     await signInWithEmailAndPassword(auth, email, password);
                 } catch (error) {
-                    loginError.textContent = '登入失敗，請檢查帳號密碼。';
+                    console.error("Login error:", error);
+                    let msg = '登入失敗: ';
+                    switch(error.code) {
+                        case 'auth/invalid-credential':
+                        case 'auth/user-not-found':
+                        case 'auth/wrong-password':
+                            msg += '帳號或密碼錯誤';
+                            break;
+                        case 'auth/network-request-failed':
+                            msg += '網路連線失敗，請檢查網路';
+                            break;
+                        case 'auth/too-many-requests':
+                            msg += '登入嘗試過多，請稍後再試';
+                            break;
+                        case 'auth/requests-from-referer-blocked':
+                        case 'auth/unauthorized-domain':
+                            msg += '目前網域未授權，請聯絡管理員新增 (localhost)';
+                            break;
+                        default:
+                            if (error.message && error.message.includes('requests-from-referer')) {
+                                msg += '目前網域未授權，請至 Firebase Console 新增 localhost 至 Authorized Domains';
+                            } else {
+                                msg += error.message;
+                            }
+                    }
+                    loginError.textContent = msg + ` (${error.code})`;
                 } finally {
                     showLoading(false);
                 }
@@ -4326,11 +4351,16 @@
                 mainContent.innerHTML = `
                     <div class="h-[50px] flex items-center justify-around border-b border-gray-200 bg-white">
                         <button data-subtab="print" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'print' || !subPage ? 'active' : ''}">列印報表</button>
+                        <button data-subtab="attendance_print" class="sub-tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-600 ${subPage === 'attendance_print' ? 'active' : ''}">出勤列印</button>
                     </div>
                     <div id="sub-page-content" class="overflow-y-auto" style="height: calc(100% - 50px);"></div>`;
 
                 const subPageContent = document.getElementById('sub-page-content');
-                renderHRPrintReport(subPageContent);
+                if (subPage === 'attendance_print') {
+                    renderHRAttendancePrint(subPageContent);
+                } else {
+                    renderHRPrintReport(subPageContent);
+                }
 
                 mainContent.querySelectorAll('.sub-tab-btn').forEach(btn => btn.addEventListener('click', () => showPage('hr', btn.dataset.subtab)));
             }
@@ -4720,6 +4750,309 @@
                         console.error('printMonthlyReport error', err);
                         showToast && showToast('列印失敗', true);
                     }
+                }
+            }
+
+            // 人事 > 出勤列印：列印及匯出Excel該人員各月份的全部打卡紀錄
+            function renderHRAttendancePrint(container) {
+                const db = window.__db;
+                const { collection, getDocs, query, where, Timestamp } = window.__fs || {};
+                if (!db || !collection || !getDocs) {
+                    container.innerHTML = '<div class="p-4 text-red-600">系統未初始化，請稍後再試。</div>';
+                    return;
+                }
+
+                const today = new Date();
+                const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                
+                container.innerHTML = `
+                    <div class="p-4 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <label for="attendance-user-select" class="text-sm font-medium">選擇人員:</label>
+                                <select id="attendance-user-select" class="border border-gray-300 rounded-md px-2 py-1 min-w-[180px]">
+                                </select>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="attendance-month" class="text-sm font-medium">選擇月份:</label>
+                                <input type="month" id="attendance-month" value="${defaultMonth}" class="border border-gray-300 rounded-md px-2 py-1">
+                            </div>
+                            <div class="flex items-center space-x-2 ml-auto">
+                                <button id="btn-print-attendance" class="bg-gray-700 text-white px-3 py-1 rounded flex items-center">
+                                    <i data-lucide="printer" class="w-4 h-4 mr-1"></i> 列印
+                                </button>
+                                <button id="btn-export-attendance-excel" class="bg-blue-600 text-white px-3 py-1 rounded flex items-center">
+                                    <i data-lucide="download" class="w-4 h-4 mr-1"></i> 匯出Excel
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow overflow-x-auto">
+                            <table id="attendance-detail-table" class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">類別</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">地點/事由</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">座標</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">地址</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">備註</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attendance-detail-tbody" class="bg-white divide-y divide-gray-200">
+                                    <tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                                        <div class="flex items-center justify-center">
+                                            <i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>
+                                            載入中...
+                                        </div>
+                                    </td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                try { lucide.createIcons(); } catch(e) {}
+
+                const userSelect = document.getElementById('attendance-user-select');
+                const monthInput = document.getElementById('attendance-month');
+                const tbodyEl = document.getElementById('attendance-detail-tbody');
+
+                // Load users
+                const usersRef = collection(db, 'users');
+                getDocs(usersRef).then((qs) => {
+                    const users = [];
+                    qs.forEach(doc => { const data = doc.data() || {}; users.push({ id: doc.id, name: data.name || data.displayName || data.account || data.email || doc.id }); });
+                    users.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(user => {
+                        const option = document.createElement('option'); option.value = user.id; option.textContent = user.name; userSelect.appendChild(option);
+                    });
+                    // Select current user if in list, otherwise first
+                    if (state.currentUser && users.some(u => u.id === state.currentUser.uid)) {
+                        userSelect.value = state.currentUser.uid;
+                    }
+                    loadAttendanceRecords();
+                });
+
+                userSelect.addEventListener('change', loadAttendanceRecords);
+                monthInput.addEventListener('change', loadAttendanceRecords);
+                
+                document.getElementById('btn-print-attendance').addEventListener('click', printAttendanceReport);
+                document.getElementById('btn-export-attendance-excel').addEventListener('click', exportAttendanceToExcel);
+
+                async function loadAttendanceRecords() {
+                    const userId = userSelect.value;
+                    const ymStr = monthInput.value || defaultMonth;
+                    if (!userId) return;
+
+                    const [yStr, mStr] = ymStr.split('-');
+                    const year = Number(yStr);
+                    const month = Number(mStr) - 1;
+                    const startOfMonth = new Date(year, month, 1, 0, 0, 0, 0);
+                    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59, 999);
+                    
+                    tbodyEl.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500"><div class="flex items-center justify-center"><i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>載入中...</div></td></tr>`;
+
+                    try {
+                        const recordsRef = collection(db, 'clockInRecords');
+                        const startTS = Timestamp?.fromDate ? Timestamp.fromDate(startOfMonth) : startOfMonth;
+                        const endTS = Timestamp?.fromDate ? Timestamp.fromDate(endOfMonth) : endOfMonth;
+                        
+                        const q = query(recordsRef, where('userId', '==', userId), where('timestamp', '>=', startTS), where('timestamp', '<=', endTS));
+                        const snap = await getDocs(q);
+                        
+                        let allRecords = [];
+                        snap.forEach(doc => {
+                            const r = doc.data();
+                            allRecords.push({
+                                type: 'clockIn',
+                                data: r,
+                                time: r.timestamp?.toDate?.() || (r.timestamp ? new Date(r.timestamp) : null)
+                            });
+                        });
+
+                        // Load leaves
+                        const leavesRef = collection(db, 'leaves');
+                        const qLeaves = query(leavesRef, where('userId', '==', userId)); 
+                        const leavesSnap = await getDocs(qLeaves);
+                        leavesSnap.forEach(doc => {
+                            const l = doc.data();
+                            if (l.status !== 'approved') return;
+                            
+                            const start = (l.startTime && l.startTime.toDate?.()) || (l.startTime ? new Date(l.startTime) : null);
+                            const end = (l.endTime && l.endTime.toDate?.()) || (l.endTime ? new Date(l.endTime) : null);
+                            
+                            if (start && start <= endOfMonth && end >= startOfMonth) {
+                                allRecords.push({
+                                    type: 'leave',
+                                    data: l,
+                                    time: start
+                                });
+                            }
+                        });
+
+                        // Sort by time
+                        allRecords.sort((a, b) => a.time - b.time);
+
+                        if (allRecords.length === 0) {
+                            tbodyEl.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">無紀錄</td></tr>`;
+                            return;
+                        }
+
+                        let html = '';
+                        const days = ['日','一','二','三','四','五','六'];
+                        
+                        allRecords.forEach(item => {
+                            const date = item.time;
+                            const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} (${days[date.getDay()]})`;
+                            const timeStr = `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+                            
+                            let typeStr = '';
+                            let locStr = '';
+                            let coordStr = '';
+                            let addrStr = '';
+                            let noteStr = '';
+                            let rowClass = '';
+
+                            if (item.type === 'clockIn') {
+                                typeStr = item.data.type || '未知';
+                                locStr = item.data.locationName || ''; // 若無 locationName 則留空，地址顯示在地址欄位
+                                noteStr = item.data.note || '';
+                                if (item.data.location) {
+                                    const lat = item.data.location.latitude;
+                                    const lng = item.data.location.longitude;
+                                    if (lat && lng) {
+                                        coordStr = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                                        if (!item.data.location.address) {
+                                            // 標記需要自動轉換地址的欄位
+                                            addrStr = `<span class="auto-geocode-addr text-gray-400" data-lat="${lat}" data-lng="${lng}">...</span>`;
+                                        } else {
+                                            addrStr = item.data.location.address;
+                                        }
+                                    }
+                                }
+                                
+                                if (typeStr === '上班' || typeStr === '返回') rowClass = 'bg-green-50';
+                                else if (typeStr === '下班') rowClass = 'bg-red-50';
+                                else if (typeStr === '外出' || typeStr === '離開') rowClass = 'bg-yellow-50';
+                            } else {
+                                typeStr = `請假-${item.data.reasonType || '其他'}`;
+                                locStr = item.data.reason || '';
+                                const eTime = (item.data.endTime && item.data.endTime.toDate?.()) || (item.data.endTime ? new Date(item.data.endTime) : null);
+                                noteStr = eTime ? `~ ${String(eTime.getHours()).padStart(2,'0')}:${String(eTime.getMinutes()).padStart(2,'0')}` : '';
+                                rowClass = 'bg-purple-50';
+                            }
+
+                            html += `
+                                <tr class="${rowClass}">
+                                    <td class="px-6 py-4 whitespace-nowrap">${dateStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${timeStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${typeStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${locStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-500">${coordStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-500">${addrStr}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${noteStr}</td>
+                                </tr>
+                            `;
+                        });
+                        tbodyEl.innerHTML = html;
+
+                        // 自動轉換地址
+                        (async () => {
+                            const pendingEls = tbodyEl.querySelectorAll('.auto-geocode-addr');
+                            if (pendingEls.length === 0) return;
+                            
+                            try {
+                                const { Geocoder } = await google.maps.importLibrary("geocoding");
+                                const geocoder = new Geocoder();
+                                
+                                // 為了避免觸發頻率限制，分批或逐一處理
+                                for (const el of pendingEls) {
+                                    const lat = parseFloat(el.dataset.lat);
+                                    const lng = parseFloat(el.dataset.lng);
+                                    if (!lat || !lng) continue;
+                                    
+                                    try {
+                                        const response = await geocoder.geocode({ location: { lat, lng } });
+                                        if (response.results && response.results[0]) {
+                                            el.textContent = response.results[0].formatted_address;
+                                            el.classList.remove('text-gray-400');
+                                        } else {
+                                            el.textContent = '無法取得地址';
+                                        }
+                                    } catch (e) {
+                                        console.warn('Geocode failed:', e);
+                                        el.textContent = '地址轉換失敗';
+                                    }
+                                    // 簡單延遲避免過快請求
+                                    await new Promise(r => setTimeout(r, 200));
+                                }
+                            } catch (e) {
+                                console.error('無法載入 Geocoding Library:', e);
+                            }
+                        })();
+
+                    } catch (error) {
+                        console.error('Error loading attendance records:', error);
+                        tbodyEl.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-red-500">載入失敗</td></tr>`;
+                    }
+                }
+
+                async function ensureXLSX() {
+                    if (window.XLSX) return true;
+                    return new Promise((resolve) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+                        s.onload = () => resolve(true);
+                        s.onerror = () => resolve(false);
+                        document.head.appendChild(s);
+                    });
+                }
+
+                async function exportAttendanceToExcel() {
+                    try {
+                        const ok = await ensureXLSX();
+                        const ymStr = monthInput.value || defaultMonth;
+                        const userName = userSelect.options[userSelect.selectedIndex]?.text || 'User';
+                        const filename = `出勤明細_${ymStr}_${userName}.xlsx`;
+                        
+                        // Use a customized table extraction or build data array directly
+                        // Using table_to_book is easiest as it reflects the current DOM
+                        const table = document.getElementById('attendance-detail-table');
+                        
+                        if (ok && window.XLSX && window.XLSX.utils && window.XLSX.writeFile) {
+                            const wb = XLSX.utils.table_to_book(table, { sheet: '出勤明細' });
+                            XLSX.writeFile(wb, filename);
+                        } else {
+                            alert('Excel 匯出元件載入失敗');
+                        }
+                    } catch (e) {
+                        console.error('Export failed:', e);
+                        alert('匯出失敗');
+                    }
+                }
+
+                function printAttendanceReport() {
+                    const ymStr = monthInput.value || defaultMonth;
+                    const userName = userSelect.options[userSelect.selectedIndex]?.text || 'User';
+                    const table = document.getElementById('attendance-detail-table');
+                    
+                    const html = `<!doctype html><html><head><meta charset="utf-8"><title>出勤明細</title>
+                    <style>
+                        @page { size: A4 landscape; margin: 10mm; }
+                        body { font-family: sans-serif; }
+                        table { width: 100%; border-collapse: collapse; }
+                        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 10px; }
+                        thead th { background: #eee; }
+                    </style>
+                    </head><body>
+                    <h2>出勤明細表：${ymStr} - ${userName}</h2>
+                    ${table.outerHTML}
+                    </body></html>`;
+                    
+                    const w = window.open('', '_blank');
+                    w.document.open();
+                    w.document.write(html);
+                    w.document.close();
+                    w.print();
                 }
             }
 
