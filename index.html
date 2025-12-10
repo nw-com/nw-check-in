@@ -527,8 +527,15 @@
                     bodyEl.classList.remove('bg-red-600');
                     bodyEl.classList.add('bg-gray-100');
                     state.currentUser = user;
+                    
+                    // Cleanup previous user doc listener if exists
+                    if (window.__userDocUnsubscribe) {
+                        try { window.__userDocUnsubscribe(); } catch(e) {}
+                        window.__userDocUnsubscribe = null;
+                    }
+
                     const userDocRef = doc(db, "users", user.uid);
-                    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                    window.__userDocUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
                         if (docSnap.exists()) {
                             const wasNotInitialized = !state.currentUserData;
                             state.currentUserData = { id: user.uid, ...docSnap.data() };
@@ -554,8 +561,12 @@
                         console.error("Error listening to user document:", error);
                         signOut(auth);
                     });
-                    state.activeListeners.push(unsubscribe);
+                    // Do NOT push to state.activeListeners to avoid cleanup on page navigation
                 } else {
+                    if (window.__userDocUnsubscribe) {
+                        try { window.__userDocUnsubscribe(); } catch(e) {}
+                        window.__userDocUnsubscribe = null;
+                    }
                     bodyEl.classList.remove('bg-gray-100');
                     bodyEl.classList.add('bg-red-600');
                     state.currentUser = null;
@@ -1235,6 +1246,7 @@
 
             // 所有同仁狀態彈窗
             function openAllUsersStatusModal() {
+                const db = window.__db;
                 // 背景
                 const backdrop = document.createElement('div');
                 backdrop.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
@@ -1492,9 +1504,12 @@
                     });
                     
                 });
+                state.activeListeners.push(unsub);
                 
                 function closeModal() {
                     try { unsub(); } catch {}
+                    const idx = state.activeListeners.indexOf(unsub);
+                    if (idx > -1) state.activeListeners.splice(idx, 1);
                     const m = document.getElementById('all-users-modal');
                     const b = document.getElementById('all-users-modal-backdrop');
                     if (m) document.body.removeChild(m);
@@ -2608,7 +2623,14 @@
                         localStorage.removeItem('__records_target_date');
                     }
                 } catch (e) { /* ignore */ }
+                let localUnsub = null;
                 const loadRecords = () => {
+                    if (localUnsub) {
+                        try { localUnsub(); } catch(e) {}
+                        const idx = state.activeListeners.indexOf(localUnsub);
+                        if (idx > -1) state.activeListeners.splice(idx, 1);
+                        localUnsub = null;
+                    }
                     const fs = window.__fs || {};
                     const db = window.__db;
                     const { collection, query, where, onSnapshot, Timestamp } = fs;
@@ -2636,7 +2658,7 @@
                         where("timestamp", "<=", endTS)
                     );
 
-                    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                    localUnsub = onSnapshot(q, (querySnapshot) => {
                         const recordsListEl = document.getElementById('records-list');
                         if (!recordsListEl) return;
                         
@@ -2778,8 +2800,18 @@
                                 backdrop.addEventListener('click', () => { backdrop.remove(); modal.remove(); });
                                 modal.querySelector('#mod-submit').addEventListener('click', async () => {
                                     try {
-                                        const { addDoc, collection, Timestamp } = window.__fs; const db = window.__db; const user = window.__auth?.currentUser;
+                                        const { addDoc, collection, Timestamp, GeoPoint } = window.__fs; const db = window.__db; const user = window.__auth?.currentUser;
                                         if (!user) { showToast('尚未登入', true); return; }
+                                        
+                                        // Capture Location
+                                        let coords = null;
+                                        try {
+                                            if (navigator.geolocation) {
+                                                 const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 5000, enableHighAccuracy: true}));
+                                                 coords = GeoPoint ? new GeoPoint(pos.coords.latitude, pos.coords.longitude) : { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+                                            }
+                                        } catch(e) { console.warn('Loc failed', e); }
+
                                         const dateStr = modal.querySelector('#mod-date').value;
                                         const timeStr = modal.querySelector('#mod-time').value;
                                         const type = typeSelect.value;
@@ -2793,6 +2825,7 @@
                                             type,
                                             reason: reason || '',
                                             locationName: locationName || '',
+                                            location: coords || null,
                                             requestedAt: Timestamp?.fromDate ? Timestamp.fromDate(new Date()) : new Date(),
                                             targetTime: Timestamp?.fromDate ? Timestamp.fromDate(dt) : dt,
                                             originalRecordId: d.id || null,
@@ -2825,7 +2858,7 @@
                         }
                     });
 
-                    state.activeListeners.push(unsubscribe);
+                    state.activeListeners.push(localUnsub);
                 };
 
                 dateInput.addEventListener('change', loadRecords);
@@ -4123,7 +4156,9 @@
                                         userId: r.userId,
                                         type: r.type,
                                         timestamp: Timestamp?.fromDate ? Timestamp.fromDate(ts) : ts,
-                                        location: GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 },
+                                        location: r.location || (state.currentLocation && typeof state.currentLocation.lat === 'number'
+                                            ? (GeoPoint ? new GeoPoint(state.currentLocation.lat, state.currentLocation.lng) : { latitude: state.currentLocation.lat, longitude: state.currentLocation.lng }) 
+                                            : (GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 })),
                                         photoUrls: [],
                                         descriptions: [],
                                         deviceId: 'retro',
@@ -4313,6 +4348,7 @@
                     backdrop.addEventListener('click', () => { backdrop.remove(); modal.remove(); });
                     modal.querySelector('#manual-submit').addEventListener('click', async () => {
                         try {
+                            const { addDoc, collection, Timestamp, GeoPoint } = window.__fs; const db = window.__db;
                             const userId = modal.querySelector('#manual-user').value;
                             const dateStr = modal.querySelector('#manual-date').value;
                             const timeStr = modal.querySelector('#manual-time').value;
@@ -4321,12 +4357,24 @@
                             const locationName = (locInput.value || '').trim();
                             if (!userId || !dateStr || !timeStr) { showToast('請完整填寫人員與日期時間', true); return; }
                             if (['外出','抵達','離開'].includes(type) && (!reason || !locationName)) { showToast('外出/抵達/離開需填寫事由與地點', true); return; }
+                            
+                            // Capture Location
+                            let coords = null;
+                            try {
+                                if (navigator.geolocation) {
+                                     const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 5000, enableHighAccuracy: true}));
+                                     coords = GeoPoint ? new GeoPoint(pos.coords.latitude, pos.coords.longitude) : { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+                                }
+                            } catch(e) { console.warn('Loc failed', e); }
+
                             const tsDate = new Date(`${dateStr}T${timeStr}:00`);
                             await addDoc(collection(db, 'clockInRecords'), {
                                 userId,
                                 type,
                                 timestamp: Timestamp?.fromDate ? Timestamp.fromDate(tsDate) : tsDate,
-                                location: GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 },
+                                location: coords || (state.currentLocation && typeof state.currentLocation.lat === 'number'
+                                    ? (GeoPoint ? new GeoPoint(state.currentLocation.lat, state.currentLocation.lng) : { latitude: state.currentLocation.lat, longitude: state.currentLocation.lng }) 
+                                    : (GeoPoint ? new GeoPoint(0,0) : { latitude: 0, longitude: 0 })),
                                 photoUrls: [],
                                 descriptions: [],
                                 deviceId: 'manual-admin',
@@ -5152,9 +5200,10 @@
                         }
                     })();
 
-                    let unsubscribe = null;
                     const loadRecords = () => {
-                        if (typeof unsubscribe === 'function') { try { unsubscribe(); } catch(e) {} }
+                        if (typeof window.__hrClockListUnsubscribe === 'function') { try { window.__hrClockListUnsubscribe(); } catch(e) {} }
+                        window.__hrClockListUnsubscribe = null;
+                        
                         const selectedDate = new Date(dateInput.value);
                         const startOfDay = new Date(selectedDate); startOfDay.setHours(0,0,0,0);
                         const endOfDay = new Date(selectedDate); endOfDay.setHours(23,59,59,999);
@@ -5166,7 +5215,7 @@
                         if (sel !== '__ALL__') constraints.unshift(where('userId', '==', sel));
                         const q = query(recordsRef, ...constraints);
 
-                        unsubscribe = onSnapshot(q, (querySnapshot) => {
+                        window.__hrClockListUnsubscribe = onSnapshot(q, (querySnapshot) => {
                             const listEl = document.getElementById('hr-records-list'); if (!listEl) return;
                             if (querySnapshot.empty) { listEl.innerHTML = `<p class="text-center text-gray-500 p-4">本日無打卡紀錄</p>`; return; }
                             const records = []; querySnapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
@@ -5246,6 +5295,12 @@
                             if (listEl) {
                                 const hint = (error?.code === 'failed-precondition') ? '可能需要建立複合索引（userId + timestamp）。' : '請確認 Firestore 規則與網路狀況。';
                                 listEl.innerHTML = `<div class="text-center text-red-500 p-4">讀取紀錄失敗。${hint}</div>`;
+                            }
+                        });
+                        state.activeListeners.push(() => {
+                            if (window.__hrClockListUnsubscribe) {
+                                try { window.__hrClockListUnsubscribe(); } catch(e) {}
+                                window.__hrClockListUnsubscribe = null;
                             }
                         });
                     };
@@ -5464,6 +5519,7 @@
                     const interval = setInterval(() => {
                         if (state.googleMapsLoaded) { clearInterval(interval); initGroupMap(); }
                     }, 100);
+                    state.activeListeners.push(() => clearInterval(interval));
                 }
             }
 
@@ -6074,6 +6130,7 @@
                             initTrackingMap();
                         }
                     }, 100);
+                    state.activeListeners.push(() => clearInterval(interval));
                 }
             }
 
@@ -6936,6 +6993,7 @@
                             try { listenForUserLocations(); } catch(e) {}
                         }
                     }, 200);
+                    state.activeListeners.push(() => clearInterval(pollId));
                     return;
                 }
                 const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
@@ -6949,6 +7007,7 @@
                             try { listenForUserLocations(); } catch (e) {}
                         }
                     }, 200);
+                    state.activeListeners.push(() => clearInterval(waitId));
                     return;
                 }
                 const { collection, query, orderBy, onSnapshot, getDocs } = fs;
@@ -8261,6 +8320,7 @@
             // --- Modals ---
             function openMapModal(lat, lng) {
                 const modalId = `map-modal-${Date.now()}`;
+                const isInvalid = !lat && !lng || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
                 
                 const modalHTML = `
                     <div id="${modalId}" class="modal-backdrop">
@@ -8271,7 +8331,9 @@
                                     <i data-lucide="x" class="w-5 h-5"></i>
                                 </button>
                             </div>
-                            <div id="modal-map" class="h-[300px] w-full"></div>
+                            ${isInvalid 
+                                ? '<div class="h-[300px] w-full flex items-center justify-center text-gray-500 bg-gray-100">無位置資訊</div>' 
+                                : '<div id="modal-map" class="h-[300px] w-full"></div>'}
                         </div>
                     </div>
                 `;
@@ -8291,18 +8353,23 @@
                 }
                 if (window.google && window.google.maps) {
                     const mapDiv = document.getElementById('modal-map');
-                    const map = new google.maps.Map(mapDiv, {
-                        center: { lat, lng },
-                        zoom: 17
-                    });
-                    
-                    new google.maps.Marker({
-                        position: { lat, lng },
-                        map: map
-                    });
+                    if (mapDiv) {
+                        const map = new google.maps.Map(mapDiv, {
+                            center: { lat, lng },
+                            zoom: 17
+                        });
+                        
+                        new google.maps.Marker({
+                            position: { lat, lng },
+                            map: map
+                        });
+                    }
                 } else {
-                    document.getElementById('modal-map').innerHTML = 
-                        '<div class="p-4 text-center text-red-500">Google Maps 尚未載入，請稍後再試</div>';
+                    const mapDiv = document.getElementById('modal-map');
+                    if (mapDiv) {
+                        mapDiv.innerHTML = 
+                            '<div class="p-4 text-center text-red-500">Google Maps 尚未載入，請稍後再試</div>';
+                    }
                 }
             }
             
@@ -8483,6 +8550,8 @@
             }
 
             function openUserModal(user = null) {
+                const db = window.__db;
+                const auth = window.__auth;
                 const modalContainer = document.getElementById('modal-container');
                 const modalId = `user-modal-${Date.now()}`;
                 const isEditing = user !== null;
@@ -8866,6 +8935,7 @@
             }
             
             function openRuleModal(rule = null) {
+                const db = window.__db;
                 const modalId = `rule-modal-${Date.now()}`;
                 const isEditing = rule !== null;
                 const title = isEditing ? '編輯規則' : '新增規則';
@@ -8948,6 +9018,8 @@
             }
 
             function renderProfileModal() {
+                const db = window.__db;
+                const auth = window.__auth;
                 const modalId = `profile-modal-${Date.now()}`;
                 const close = () => document.getElementById(modalId)?.remove();
 
@@ -9145,14 +9217,9 @@
                     });
                 }
 
-                logoutBtn.addEventListener('click', async () => {
-                    close();
-                    await signOut(auth);
-                    showToast("您已成功登出");
-                });
-
                 // 載入請假申請清單
                 (async function loadFutureLeaves() {
+                    const db = window.__db;
                     const container = document.getElementById('future-leaves');
                     if (!container) return;
                     try {
@@ -9759,6 +9826,29 @@
             function cleanupListeners() {
                 state.activeListeners.forEach(unsubscribe => unsubscribe());
                 state.activeListeners = [];
+                
+                // Cleanup tracking poller if active
+                if (state.trackingPoller) {
+                    clearInterval(state.trackingPoller);
+                    state.trackingPoller = null;
+                }
+
+                // Cleanup geolocation watch
+                if (state.geoWatchId) {
+                    try { navigator.geolocation.clearWatch(state.geoWatchId); } catch (e) {}
+                    state.geoWatchId = null;
+                }
+
+                // Cleanup HR Clock List listener
+                if (typeof window.__hrClockListUnsubscribe === 'function') {
+                    try { window.__hrClockListUnsubscribe(); } catch (e) {}
+                    window.__hrClockListUnsubscribe = null;
+                }
+
+                // Cleanup Calendar listeners
+                if (typeof window.__calendarCleanup === 'function') {
+                    try { window.__calendarCleanup(); } catch (e) {}
+                }
             }
 
             // 移除舊的 getStatusColor 函數，使用 dashboard-functions.js 中的版本
